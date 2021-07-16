@@ -13,7 +13,7 @@ import java.util.Collection;
 @NoArgsConstructor
 @Accessors(chain = true)
 @Entity
-@Table(name = "\"user\"",
+@Table(name = "user",
         indexes = @Index(
                 name = "idx_user_email",
                 columnList = "email",
