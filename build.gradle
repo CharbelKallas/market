@@ -2,7 +2,6 @@ plugins {
 	id 'org.springframework.boot' version '2.5.2'
 	id 'io.spring.dependency-management' version '1.0.11.RELEASE'
 	id 'java'
-	id 'org.flywaydb.flyway' version '7.11.0'
 }
 
 group = 'com'
@@ -22,7 +21,6 @@ repositories {
 dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
 	implementation 'org.springframework.boot:spring-boot-starter-web'
-	implementation 'org.flywaydb:flyway-core:7.11.0'
 
 	compileOnly 'org.projectlombok:lombok'
 
@@ -35,13 +33,4 @@ dependencies {
 
 test {
 	useJUnitPlatform()
-}
-
-flyway {
-	table = "schema_version"
-	url = 'jdbc:postgresql://localhost:5433/market'
-	user = 'market'
-	password = 'market'
-	baselineOnMigrate = true
-	cleanDisabled = true
 }
