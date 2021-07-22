@@ -18,7 +18,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Arrays;
 import java.util.HashSet;
-import java.util.Optional;
 
 import static com.market.exception.EntityType.USER;
 import static com.market.exception.ExceptionType.DUPLICATE_ENTITY;
@@ -42,56 +41,43 @@ public class UserServiceImpl implements UserService {
     @Override
     public UserDto signup(UserDto userDto) {
         Role userRole;
-        User user = userRepository.findByEmail(userDto.getEmail());
-        if (user == null) {
-            if (userDto.isAdmin()) {
-                userRole = roleRepository.findByRole(UserRoles.ADMIN);
-            } else {
-                userRole = roleRepository.findByRole(UserRoles.USER);
-            }
-            user = new User()
-                    .setEmail(userDto.getEmail())
-                    .setPassword(bCryptPasswordEncoder.encode(userDto.getPassword()))
-                    .setRoles(new HashSet<>(Arrays.asList(userRole)))
-                    .setFirstName(userDto.getFirstName())
-                    .setLastName(userDto.getLastName())
-                    .setMobileNumber(userDto.getMobileNumber());
-            return UserMapper.toUserDto(userRepository.save(user));
+        User user = userRepository.findOneByEmail(userDto.getEmail()).orElseThrow(() -> exception(USER, DUPLICATE_ENTITY, userDto.getEmail()));
+        if (userDto.isAdmin()) {
+            userRole = roleRepository.findOneByRole(UserRoles.ADMIN).orElseThrow(() -> exception(USER, ENTITY_NOT_FOUND, UserRoles.ADMIN.name()));
+        } else {
+            userRole = roleRepository.findOneByRole(UserRoles.USER).orElseThrow(() -> exception(USER, ENTITY_NOT_FOUND, UserRoles.USER.name()));
         }
-        throw exception(USER, DUPLICATE_ENTITY, userDto.getEmail());
+        user = new User()
+                .setEmail(userDto.getEmail())
+                .setPassword(bCryptPasswordEncoder.encode(userDto.getPassword()))
+                .setRoles(new HashSet<>(Arrays.asList(userRole)))
+                .setFirstName(userDto.getFirstName())
+                .setLastName(userDto.getLastName())
+                .setMobileNumber(userDto.getMobileNumber());
+        return UserMapper.toUserDto(userRepository.save(user));
     }
 
     @Transactional
     public UserDto findUserByEmail(String email) {
-        Optional<User> user = Optional.ofNullable(userRepository.findByEmail(email));
-        if (user.isPresent()) {
-            return modelMapper.map(user.get(), UserDto.class);
-        }
-        throw exception(USER, ENTITY_NOT_FOUND, email);
+        User user = userRepository.findOneByEmail(email).orElseThrow(() -> exception(USER, ENTITY_NOT_FOUND, email));
+        return modelMapper.map(user, UserDto.class);
     }
 
     @Override
     public UserDto updateProfile(UserDto userDto) {
-        Optional<User> user = Optional.ofNullable(userRepository.findByEmail(userDto.getEmail()));
-        if (user.isPresent()) {
-            User userModel = user.get();
-            userModel.setFirstName(userDto.getFirstName())
-                    .setLastName(userDto.getLastName())
-                    .setMobileNumber(userDto.getMobileNumber());
-            return UserMapper.toUserDto(userRepository.save(userModel));
-        }
-        throw exception(USER, ENTITY_NOT_FOUND, userDto.getEmail());
+        User user = userRepository.findOneByEmail(userDto.getEmail()).orElseThrow(() -> exception(USER, ENTITY_NOT_FOUND, userDto.getEmail()));
+        user.setFirstName(userDto.getFirstName())
+                .setLastName(userDto.getLastName())
+                .setMobileNumber(userDto.getMobileNumber());
+        return UserMapper.toUserDto(userRepository.save(user));
+
     }
 
     @Override
     public UserDto changePassword(UserDto userDto, String newPassword) {
-        Optional<User> user = Optional.ofNullable(userRepository.findByEmail(userDto.getEmail()));
-        if (user.isPresent()) {
-            User userModel = user.get();
-            userModel.setPassword(bCryptPasswordEncoder.encode(newPassword));
-            return UserMapper.toUserDto(userRepository.save(userModel));
-        }
-        throw exception(USER, ENTITY_NOT_FOUND, userDto.getEmail());
+        User user = userRepository.findOneByEmail(userDto.getEmail()).orElseThrow(() -> exception(USER, ENTITY_NOT_FOUND, userDto.getEmail()));
+        user.setPassword(bCryptPasswordEncoder.encode(newPassword));
+        return UserMapper.toUserDto(userRepository.save(user));
     }
 
     private RuntimeException exception(EntityType entityType, ExceptionType exceptionType, String... args) {
