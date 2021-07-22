@@ -1,4 +1,4 @@
-package com.market.controller.request;
+package com.market.dto.request;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import lombok.Getter;

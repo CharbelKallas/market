@@ -41,13 +41,15 @@ public class UserServiceImpl implements UserService {
     @Override
     public UserDto signup(UserDto userDto) {
         Role userRole;
-        User user = userRepository.findOneByEmail(userDto.getEmail()).orElseThrow(() -> exception(USER, DUPLICATE_ENTITY, userDto.getEmail()));
+        userRepository.findOneByEmail(userDto.getEmail()).ifPresent(usr -> {
+            throw exception(USER, DUPLICATE_ENTITY, userDto.getEmail());
+        });
         if (userDto.isAdmin()) {
             userRole = roleRepository.findOneByRole(UserRoles.ADMIN).orElseThrow(() -> exception(USER, ENTITY_NOT_FOUND, UserRoles.ADMIN.name()));
         } else {
             userRole = roleRepository.findOneByRole(UserRoles.USER).orElseThrow(() -> exception(USER, ENTITY_NOT_FOUND, UserRoles.USER.name()));
         }
-        user = new User()
+        User user = new User()
                 .setEmail(userDto.getEmail())
                 .setPassword(bCryptPasswordEncoder.encode(userDto.getPassword()))
                 .setRoles(new HashSet<>(Arrays.asList(userRole)))
@@ -55,6 +57,7 @@ public class UserServiceImpl implements UserService {
                 .setLastName(userDto.getLastName())
                 .setMobileNumber(userDto.getMobileNumber());
         return UserMapper.toUserDto(userRepository.save(user));
+
     }
 
     @Transactional
