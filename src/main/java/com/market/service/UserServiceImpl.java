@@ -23,6 +23,7 @@ import java.util.Optional;
 import static com.market.exception.EntityType.USER;
 import static com.market.exception.ExceptionType.DUPLICATE_ENTITY;
 import static com.market.exception.ExceptionType.ENTITY_NOT_FOUND;
+
 @Component
 public class UserServiceImpl implements UserService {
 

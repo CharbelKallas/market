@@ -48,7 +48,7 @@ public class BRSException {
         return entityType.name().concat(".").concat(exceptionType.getValue()).toLowerCase();
     }
 
-    private static String format(String template, String ... args) {
+    private static String format(String template, String... args) {
         Optional<String> templateContent = Optional.ofNullable(propertiesConfig.getConfigValue(template));
         if (templateContent.isPresent()) {
             return MessageFormat.format(templateContent.get(), (Object[]) args);
