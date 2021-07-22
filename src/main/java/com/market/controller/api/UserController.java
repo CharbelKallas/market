@@ -1,10 +1,10 @@
 package com.market.controller.api;
 
-import com.market.dto.request.JwtResponse;
-import com.market.dto.request.LoginRequest;
-import com.market.dto.request.UserSignupRequest;
-import com.market.dto.model.user.UserDto;
-import com.market.dto.response.Response;
+import com.market.payload.request.LoginRequest;
+import com.market.payload.request.UserDto;
+import com.market.payload.request.UserSignupRequest;
+import com.market.payload.response.JwtResponse;
+import com.market.payload.response.Response;
 import com.market.security.jwt.JwtUtils;
 import com.market.security.services.UserDetailsImpl;
 import com.market.service.UserService;

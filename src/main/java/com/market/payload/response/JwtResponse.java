@@ -1,4 +1,4 @@
-package com.market.dto.request;
+package com.market.payload.response;
 
 import lombok.Getter;
 import lombok.Setter;

@@ -1,6 +1,6 @@
 package com.market.service;
 
-import com.market.dto.model.user.UserDto;
+import com.market.payload.request.UserDto;
 
 public interface UserService {
     UserDto signup(UserDto userDto);

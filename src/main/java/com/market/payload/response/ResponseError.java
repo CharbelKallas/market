@@ -1,21 +1,22 @@
-package com.market.dto.request;
+package com.market.payload.response;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import lombok.experimental.Accessors;
 
-import javax.validation.constraints.NotNull;
+import java.util.Date;
 
 @Getter
 @Setter
 @Accessors(chain = true)
 @NoArgsConstructor
+@JsonInclude(JsonInclude.Include.NON_NULL)
 @JsonIgnoreProperties(ignoreUnknown = true)
-public class LoginRequest {
-    @NotNull(message = "{constraints.NotEmpty.message}")
-    private String email;
-    @NotNull(message = "{constraints.NotEmpty.message}")
-    private String password;
+public class ResponseError {
+    private Date timestamp;
+    private String message;
+    private String details;
 }

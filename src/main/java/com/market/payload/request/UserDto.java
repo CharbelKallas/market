@@ -1,4 +1,4 @@
-package com.market.dto.model.user;
+package com.market.payload.request;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;

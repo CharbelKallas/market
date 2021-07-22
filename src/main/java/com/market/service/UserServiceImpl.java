@@ -1,13 +1,13 @@
 package com.market.service;
 
-import com.market.dto.mapper.UserMapper;
-import com.market.dto.model.user.UserDto;
 import com.market.exception.BRSException;
 import com.market.exception.EntityType;
 import com.market.exception.ExceptionType;
 import com.market.model.user.Role;
 import com.market.model.user.User;
 import com.market.model.user.UserRoles;
+import com.market.payload.request.RoleDto;
+import com.market.payload.request.UserDto;
 import com.market.repository.user.RoleRepository;
 import com.market.repository.user.UserRepository;
 import org.modelmapper.ModelMapper;
@@ -18,6 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Arrays;
 import java.util.HashSet;
+import java.util.stream.Collectors;
 
 import static com.market.exception.EntityType.USER;
 import static com.market.exception.ExceptionType.DUPLICATE_ENTITY;
@@ -56,7 +57,7 @@ public class UserServiceImpl implements UserService {
                 .setFirstName(userDto.getFirstName())
                 .setLastName(userDto.getLastName())
                 .setMobileNumber(userDto.getMobileNumber());
-        return UserMapper.toUserDto(userRepository.save(user));
+        return toUserDto(userRepository.save(user));
 
     }
 
@@ -72,7 +73,7 @@ public class UserServiceImpl implements UserService {
         user.setFirstName(userDto.getFirstName())
                 .setLastName(userDto.getLastName())
                 .setMobileNumber(userDto.getMobileNumber());
-        return UserMapper.toUserDto(userRepository.save(user));
+        return toUserDto(userRepository.save(user));
 
     }
 
@@ -80,10 +81,23 @@ public class UserServiceImpl implements UserService {
     public UserDto changePassword(UserDto userDto, String newPassword) {
         User user = userRepository.findOneByEmail(userDto.getEmail()).orElseThrow(() -> exception(USER, ENTITY_NOT_FOUND, userDto.getEmail()));
         user.setPassword(bCryptPasswordEncoder.encode(newPassword));
-        return UserMapper.toUserDto(userRepository.save(user));
+        return toUserDto(userRepository.save(user));
     }
 
     private RuntimeException exception(EntityType entityType, ExceptionType exceptionType, String... args) {
         return BRSException.throwException(entityType, exceptionType, args);
+    }
+
+    public UserDto toUserDto(User user) {
+        return new UserDto()
+                .setEmail(user.getEmail())
+                .setFirstName(user.getFirstName())
+                .setLastName(user.getLastName())
+                .setMobileNumber(user.getMobileNumber())
+                .setRoles(new HashSet<>(user
+                        .getRoles()
+                        .stream()
+                        .map(role -> new ModelMapper().map(role, RoleDto.class))
+                        .collect(Collectors.toSet())));
     }
 }

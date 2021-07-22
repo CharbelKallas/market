@@ -1,4 +1,4 @@
-package com.market.dto.response;
+package com.market.payload.response;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
