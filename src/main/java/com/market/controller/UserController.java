@@ -1,4 +1,4 @@
-package com.market.controller.api;
+package com.market.controller;
 
 import com.market.payload.request.LoginRequest;
 import com.market.payload.request.UserDto;
@@ -38,14 +38,14 @@ public class UserController {
 
     @PostMapping("/signup")
     public Response<?> signup(@RequestBody @Valid UserSignupRequest userSignupRequest) {
-        return Response.ok().setPayload(registerUser(userSignupRequest, false));
+        return Response.ok().setPayload(registerUser(userSignupRequest));
     }
 
     @PostMapping("/signin")
     public ResponseEntity<?> authenticateUser(@Valid @RequestBody LoginRequest loginRequest) {
 
         Authentication authentication = authenticationManager.authenticate(
-                new UsernamePasswordAuthenticationToken(loginRequest.getEmail(), loginRequest.getPassword()));
+                new UsernamePasswordAuthenticationToken(loginRequest.getUsername(), loginRequest.getPassword()));
 
         SecurityContextHolder.getContext().setAuthentication(authentication);
         String jwt = jwtUtils.generateJwtToken(authentication);
@@ -58,18 +58,17 @@ public class UserController {
         return ResponseEntity.ok(new JwtResponse(jwt,
                 userDetails.getId(),
                 userDetails.getUsername(),
-                userDetails.getEmail(),
-                roles));
+                userDetails.getEmail()));
     }
 
-    private UserDto registerUser(UserSignupRequest userSignupRequest, boolean isAdmin) {
+    private UserDto registerUser(UserSignupRequest userSignupRequest) {
         UserDto userDto = new UserDto()
                 .setEmail(userSignupRequest.getEmail())
+                .setUsername(userSignupRequest.getUsername())
                 .setPassword(userSignupRequest.getPassword())
                 .setFirstName(userSignupRequest.getFirstName())
                 .setLastName(userSignupRequest.getLastName())
-                .setMobileNumber(userSignupRequest.getMobileNumber())
-                .setAdmin(isAdmin);
+                .setMobileNumber(userSignupRequest.getMobileNumber());
 
         return userService.signup(userDto);
     }

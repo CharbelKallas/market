@@ -18,6 +18,9 @@ public class UserSignupRequest {
     private String email;
 
     @NotEmpty(message = "{constraints.NotEmpty.message}")
+    private String username;
+
+    @NotEmpty(message = "{constraints.NotEmpty.message}")
     private String password;
 
     @NotEmpty(message = "{constraints.NotEmpty.message}")

@@ -6,26 +6,24 @@ import lombok.Setter;
 import lombok.experimental.Accessors;
 
 import javax.persistence.*;
-import java.util.Collection;
 
 @Getter
 @Setter
 @NoArgsConstructor
 @Accessors(chain = true)
 @Entity
-@Table(name = "\"user\"",
-        indexes = @Index(
-                name = "idx_user_email",
-                columnList = "email",
-                unique = true
-        ))
+@Table(name = "\"user\"")
 public class User {
     @Id
     @Column(name = "user_id")
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Column(unique = true)
     private String email;
+
+    @Column(unique = true)
+    private String username;
 
     private String password;
 
@@ -38,13 +36,4 @@ public class User {
     @Column(name = "mobile_number")
     private String mobileNumber;
 
-    @ManyToMany(fetch = FetchType.LAZY)
-    @JoinTable(name = "user_role",
-            joinColumns = {@JoinColumn(name = "user_id")},
-            inverseJoinColumns = {@JoinColumn(name = "role_id")})
-    private Collection<Role> roles;
-
-    public String getFullName() {
-        return firstName != null ? firstName.concat(" ").concat(lastName) : "";
-    }
 }

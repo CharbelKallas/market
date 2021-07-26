@@ -3,12 +3,8 @@ package com.market.service;
 import com.market.exception.BRSException;
 import com.market.exception.EntityType;
 import com.market.exception.ExceptionType;
-import com.market.model.user.Role;
 import com.market.model.user.User;
-import com.market.model.user.UserRoles;
-import com.market.payload.request.RoleDto;
 import com.market.payload.request.UserDto;
-import com.market.repository.user.RoleRepository;
 import com.market.repository.user.UserRepository;
 import org.modelmapper.ModelMapper;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -16,9 +12,8 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.Arrays;
-import java.util.HashSet;
-import java.util.stream.Collectors;
+import java.util.ArrayList;
+import java.util.List;
 
 import static com.market.exception.EntityType.USER;
 import static com.market.exception.ExceptionType.DUPLICATE_ENTITY;
@@ -31,9 +26,6 @@ public class UserServiceImpl implements UserService {
     private BCryptPasswordEncoder bCryptPasswordEncoder;
 
     @Autowired
-    private RoleRepository roleRepository;
-
-    @Autowired
     private UserRepository userRepository;
 
     @Autowired
@@ -41,19 +33,12 @@ public class UserServiceImpl implements UserService {
 
     @Override
     public UserDto signup(UserDto userDto) {
-        Role userRole;
-        userRepository.findOneByEmail(userDto.getEmail()).ifPresent(usr -> {
+        userRepository.findOneByUsername(userDto.getUsername()).ifPresent(usr -> {
             throw exception(USER, DUPLICATE_ENTITY, userDto.getEmail());
         });
-        if (userDto.isAdmin()) {
-            userRole = roleRepository.findOneByRole(UserRoles.ADMIN).orElseThrow(() -> exception(USER, ENTITY_NOT_FOUND, UserRoles.ADMIN.name()));
-        } else {
-            userRole = roleRepository.findOneByRole(UserRoles.USER).orElseThrow(() -> exception(USER, ENTITY_NOT_FOUND, UserRoles.USER.name()));
-        }
         User user = new User()
                 .setEmail(userDto.getEmail())
                 .setPassword(bCryptPasswordEncoder.encode(userDto.getPassword()))
-                .setRoles(new HashSet<>(Arrays.asList(userRole)))
                 .setFirstName(userDto.getFirstName())
                 .setLastName(userDto.getLastName())
                 .setMobileNumber(userDto.getMobileNumber());
@@ -69,7 +54,7 @@ public class UserServiceImpl implements UserService {
 
     @Override
     public UserDto updateProfile(UserDto userDto) {
-        User user = userRepository.findOneByEmail(userDto.getEmail()).orElseThrow(() -> exception(USER, ENTITY_NOT_FOUND, userDto.getEmail()));
+        User user = userRepository.findOneByUsername(userDto.getUsername()).orElseThrow(() -> exception(USER, ENTITY_NOT_FOUND, userDto.getEmail()));
         user.setFirstName(userDto.getFirstName())
                 .setLastName(userDto.getLastName())
                 .setMobileNumber(userDto.getMobileNumber());
@@ -79,9 +64,16 @@ public class UserServiceImpl implements UserService {
 
     @Override
     public UserDto changePassword(UserDto userDto, String newPassword) {
-        User user = userRepository.findOneByEmail(userDto.getEmail()).orElseThrow(() -> exception(USER, ENTITY_NOT_FOUND, userDto.getEmail()));
+        User user = userRepository.findOneByUsername(userDto.getUsername()).orElseThrow(() -> exception(USER, ENTITY_NOT_FOUND, userDto.getEmail()));
         user.setPassword(bCryptPasswordEncoder.encode(newPassword));
         return toUserDto(userRepository.save(user));
+    }
+
+    @Override
+    public List<UserDto> findAll() {
+        List<UserDto> userDtos = new ArrayList<>();
+        userRepository.findAll().forEach(user -> userDtos.add(toUserDto(user)));
+        return userDtos;
     }
 
     private RuntimeException exception(EntityType entityType, ExceptionType exceptionType, String... args) {
@@ -91,13 +83,9 @@ public class UserServiceImpl implements UserService {
     public UserDto toUserDto(User user) {
         return new UserDto()
                 .setEmail(user.getEmail())
+                .setUsername(user.getUsername())
                 .setFirstName(user.getFirstName())
                 .setLastName(user.getLastName())
-                .setMobileNumber(user.getMobileNumber())
-                .setRoles(new HashSet<>(user
-                        .getRoles()
-                        .stream()
-                        .map(role -> new ModelMapper().map(role, RoleDto.class))
-                        .collect(Collectors.toSet())));
+                .setMobileNumber(user.getMobileNumber());
     }
 }

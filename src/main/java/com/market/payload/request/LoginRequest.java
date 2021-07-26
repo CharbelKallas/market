@@ -15,7 +15,7 @@ import javax.validation.constraints.NotNull;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class LoginRequest {
     @NotNull(message = "{constraints.NotEmpty.message}")
-    private String email;
+    private String username;
     @NotNull(message = "{constraints.NotEmpty.message}")
     private String password;
 }
