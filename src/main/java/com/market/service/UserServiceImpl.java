@@ -8,7 +8,7 @@ import com.market.payload.request.UserDto;
 import com.market.repository.user.UserRepository;
 import org.modelmapper.ModelMapper;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -23,7 +23,7 @@ import static com.market.exception.ExceptionType.ENTITY_NOT_FOUND;
 public class UserServiceImpl implements UserService {
 
     @Autowired
-    private BCryptPasswordEncoder bCryptPasswordEncoder;
+    private PasswordEncoder passwordEncoder;
 
     @Autowired
     private UserRepository userRepository;
@@ -33,12 +33,19 @@ public class UserServiceImpl implements UserService {
 
     @Override
     public UserDto signup(UserDto userDto) {
-        userRepository.findOneByUsername(userDto.getUsername()).ifPresent(usr -> {
+
+        if (userRepository.existsByUsername(userDto.getUsername())) {
+            throw exception(USER, DUPLICATE_ENTITY, userDto.getUsername());
+        }
+
+        if (userRepository.existsByEmail(userDto.getEmail())) {
             throw exception(USER, DUPLICATE_ENTITY, userDto.getEmail());
-        });
+        }
+
         User user = new User()
+                .setUsername(userDto.getUsername())
                 .setEmail(userDto.getEmail())
-                .setPassword(bCryptPasswordEncoder.encode(userDto.getPassword()))
+                .setPassword(passwordEncoder.encode(userDto.getPassword()))
                 .setFirstName(userDto.getFirstName())
                 .setLastName(userDto.getLastName())
                 .setMobileNumber(userDto.getMobileNumber());
@@ -65,7 +72,7 @@ public class UserServiceImpl implements UserService {
     @Override
     public UserDto changePassword(UserDto userDto, String newPassword) {
         User user = userRepository.findOneByUsername(userDto.getUsername()).orElseThrow(() -> exception(USER, ENTITY_NOT_FOUND, userDto.getEmail()));
-        user.setPassword(bCryptPasswordEncoder.encode(newPassword));
+        user.setPassword(passwordEncoder.encode(newPassword));
         return toUserDto(userRepository.save(user));
     }
 
