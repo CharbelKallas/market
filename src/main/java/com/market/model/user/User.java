@@ -3,6 +3,7 @@ package com.market.model.user;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import lombok.ToString;
 import lombok.experimental.Accessors;
 
 import javax.persistence.*;
@@ -11,6 +12,7 @@ import java.util.Set;
 
 @Getter
 @Setter
+@ToString
 @NoArgsConstructor
 @Accessors(chain = true)
 @Entity
@@ -39,13 +41,10 @@ public class User {
     @Column(name = "mobile_number")
     private String mobileNumber;
 
-    @Column(name = "verified_on")
-    private Date verifiedOn;
+    @Column(name = "verified_date")
+    private Date verifiedDate;
 
-    @Column(name = "created_on")
-    private Date createdOn;
-
-    @OneToMany(mappedBy = "user")
+    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL)
     private Set<UserOtp> userOtps;
 
 }

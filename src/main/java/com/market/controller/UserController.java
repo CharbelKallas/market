@@ -3,6 +3,7 @@ package com.market.controller;
 import com.market.payload.request.LoginRequest;
 import com.market.payload.request.UserDto;
 import com.market.payload.request.UserSignupRequest;
+import com.market.payload.request.VerifyRequest;
 import com.market.payload.response.Response;
 import com.market.service.UserService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -28,6 +29,15 @@ public class UserController {
     @PostMapping("/signin")
     public Response<?> signin(@RequestBody @Valid LoginRequest loginRequest) {
         return Response.ok().setPayload(userService.signin(loginRequest));
+    }
+
+    @PostMapping("/verify")
+    public Response<?> verify(@RequestBody @Valid VerifyRequest verifyRequest) {
+        Boolean verified = userService.verify(verifyRequest);
+        if (verified)
+            return Response.ok().setPayload("Activated");
+        else
+            return Response.wrongCredentials().setPayload("Not Activated");
     }
 
     private UserDto registerUser(UserSignupRequest userSignupRequest) {

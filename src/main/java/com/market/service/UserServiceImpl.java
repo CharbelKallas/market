@@ -7,7 +7,9 @@ import com.market.model.user.User;
 import com.market.model.user.UserOtp;
 import com.market.payload.request.LoginRequest;
 import com.market.payload.request.UserDto;
+import com.market.payload.request.VerifyRequest;
 import com.market.payload.response.JwtResponse;
+import com.market.repository.user.UserOtpRepository;
 import com.market.repository.user.UserRepository;
 import com.market.security.jwt.JwtUtils;
 import com.market.security.services.UserDetailsImpl;
@@ -21,7 +23,10 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 
+import java.util.Collections;
 import java.util.Date;
+import java.util.HashSet;
+import java.util.Optional;
 
 import static com.market.exception.EntityType.USER;
 import static com.market.exception.ExceptionType.DUPLICATE_ENTITY;
@@ -40,6 +45,9 @@ public class UserServiceImpl implements UserService {
 
     @Autowired
     private UserRepository userRepository;
+
+    @Autowired
+    private UserOtpRepository otpRepository;
 
     @Autowired
     private EmailService emailService;
@@ -61,7 +69,6 @@ public class UserServiceImpl implements UserService {
             throw exception(USER, DUPLICATE_ENTITY, userDto.getEmail());
         }
 
-
         User user = new User()
                 .setUsername(userDto.getUsername())
                 .setEmail(userDto.getEmail())
@@ -73,9 +80,11 @@ public class UserServiceImpl implements UserService {
         UserOtp userOtp = new UserOtp()
                 .setUser(user)
                 .setExpiryDate(new Date((new Date()).getTime() + otpExpirationMs))
-                .setOtp(RandomStringUtil.getAlphaNumericString(5, user.getUsername() + user.getPassword() + user.getCreatedOn()));
+                .setOtp(RandomStringUtil.getAlphaNumericString(5, user.toString()));
 
         emailService.sendSimpleMessage(user.getEmail(), "OTP verification", "Your OTP is : " + userOtp.getOtp());
+
+        user.setUserOtps(new HashSet<>(Collections.singletonList(userOtp)));
 
         return toUserDto(userRepository.save(user));
     }
@@ -94,6 +103,17 @@ public class UserServiceImpl implements UserService {
                 userDetails.getId(),
                 userDetails.getUsername(),
                 userDetails.getEmail());
+    }
+
+    @Override
+    public Boolean verify(VerifyRequest verifyRequest) {
+        Optional<UserOtp> userOtp = otpRepository.findOneByUserIdAndOtp(verifyRequest.getUserId(), verifyRequest.getOtp());
+
+        if (userOtp.isPresent()) {
+            userRepository.save(userRepository.getById(verifyRequest.getUserId()).setVerifiedDate(new Date()));
+            otpRepository.delete(userOtp.get());
+        }
+        return userOtp.isPresent();
     }
 
 //    @Override
