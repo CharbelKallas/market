@@ -13,7 +13,7 @@ import com.market.repository.user.UserOtpRepository;
 import com.market.repository.user.UserRepository;
 import com.market.security.jwt.JwtUtils;
 import com.market.security.services.UserDetailsImpl;
-import com.market.util.RandomStringUtil;
+import com.market.util.OtpUtil;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -80,7 +80,7 @@ public class UserServiceImpl implements UserService {
         UserOtp userOtp = new UserOtp()
                 .setUser(user)
                 .setExpiryDate(new Date((new Date()).getTime() + otpExpirationMs))
-                .setOtp(RandomStringUtil.getAlphaNumericString(5, user.toString()));
+                .setOtp(OtpUtil.generateOTP(5));
 
         emailService.sendSimpleMessage(user.getEmail(), "OTP verification", "Your OTP is : " + userOtp.getOtp());
 
