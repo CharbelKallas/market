@@ -6,6 +6,7 @@ import com.market.exception.ExceptionType;
 import com.market.model.user.User;
 import com.market.model.user.UserOtp;
 import com.market.payload.request.LoginRequest;
+import com.market.payload.request.ResendOtpRequest;
 import com.market.payload.request.UserDto;
 import com.market.payload.request.VerifyRequest;
 import com.market.payload.response.JwtResponse;
@@ -107,13 +108,25 @@ public class UserServiceImpl implements UserService {
 
     @Override
     public Boolean verify(VerifyRequest verifyRequest) {
-        Optional<UserOtp> userOtp = otpRepository.findOneByUserIdAndOtp(verifyRequest.getUserId(), verifyRequest.getOtp());
+        Optional<UserOtp> userOtp = otpRepository.findOneByUserIdAndOtpAndExpiryDateGreaterThan(verifyRequest.getUserId(), verifyRequest.getOtp(), new Date());
 
         if (userOtp.isPresent()) {
             userRepository.save(userRepository.getById(verifyRequest.getUserId()).setVerifiedDate(new Date()));
             otpRepository.delete(userOtp.get());
         }
         return userOtp.isPresent();
+    }
+
+    @Override
+    public void resendOtp(ResendOtpRequest request) {
+
+        UserOtp otp = otpRepository.findOneByUserId(request.getUserId()).orElseThrow(() -> exception(USER, ExceptionType.ENTITY_EXCEPTION, String.valueOf(request.getUserId())));
+
+        otp.setUser(userRepository.getById(request.getUserId()))
+                .setExpiryDate(new Date((new Date()).getTime() + otpExpirationMs))
+                .setOtp(OtpUtil.generateOTP(5));
+
+        otpRepository.save(otp);
     }
 
 //    @Override

@@ -11,7 +11,6 @@ import lombok.experimental.Accessors;
 @Accessors(chain = true)
 @NoArgsConstructor
 @JsonIgnoreProperties(ignoreUnknown = true)
-public class VerifyRequest {
-    private String otp;
+public class ResendOtpRequest {
     private Long userId;
 }

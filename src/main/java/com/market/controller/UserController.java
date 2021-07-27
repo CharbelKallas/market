@@ -1,9 +1,6 @@
 package com.market.controller;
 
-import com.market.payload.request.LoginRequest;
-import com.market.payload.request.UserDto;
-import com.market.payload.request.UserSignupRequest;
-import com.market.payload.request.VerifyRequest;
+import com.market.payload.request.*;
 import com.market.payload.response.Response;
 import com.market.service.UserService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -37,7 +34,13 @@ public class UserController {
         if (verified)
             return Response.ok().setPayload("Activated");
         else
-            return Response.wrongCredentials().setPayload("Not Activated");
+            return Response.wrongCredentials().setPayload("Wrong Credentials or OTP Expired");
+    }
+
+    @PostMapping("/resend_otp")
+    public Response<?> resendOtp(@RequestBody @Valid ResendOtpRequest request) {
+        userService.resendOtp(request);
+        return Response.ok().setPayload("Done");
     }
 
     private UserDto registerUser(UserSignupRequest userSignupRequest) {
