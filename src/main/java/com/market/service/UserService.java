@@ -1,17 +1,12 @@
 package com.market.service;
 
+import com.market.payload.request.LoginRequest;
 import com.market.payload.request.UserDto;
-
-import java.util.List;
+import com.market.payload.response.JwtResponse;
 
 public interface UserService {
     UserDto signup(UserDto userDto);
-
-    UserDto findUserByEmail(String email);
-
-    UserDto updateProfile(UserDto userDto);
-
-    UserDto changePassword(UserDto userDto, String newPassword);
-
-    List<UserDto> findAll();
+    JwtResponse signin(LoginRequest loginRequest);
+//    UserDto updateProfile(UserDto userDto);
+//    UserDto changePassword(UserDto userDto, String newPassword);
 }

@@ -6,6 +6,8 @@ import lombok.Setter;
 import lombok.experimental.Accessors;
 
 import javax.persistence.*;
+import java.util.Date;
+import java.util.Set;
 
 @Getter
 @Setter
@@ -14,6 +16,7 @@ import javax.persistence.*;
 @Entity
 @Table(name = "\"user\"")
 public class User {
+
     @Id
     @Column(name = "user_id")
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -35,5 +38,14 @@ public class User {
 
     @Column(name = "mobile_number")
     private String mobileNumber;
+
+    @Column(name = "verified_on")
+    private Date verifiedOn;
+
+    @Column(name = "created_on")
+    private Date createdOn;
+
+    @OneToMany(mappedBy = "user")
+    private Set<UserOtp> userOtps;
 
 }
