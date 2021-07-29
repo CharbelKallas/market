@@ -3,8 +3,8 @@ package com.market.service;
 import com.market.exception.BRSException;
 import com.market.model.user.User;
 import com.market.model.user.UserOtp;
-import com.market.payload.request.UserDto;
 import com.market.payload.response.JwtResponse;
+import com.market.payload.response.UserDto;
 import com.market.repository.user.UserOtpRepository;
 import com.market.repository.user.UserRepository;
 import com.market.security.jwt.JwtUtils;
@@ -55,28 +55,28 @@ public class UserServiceImpl implements UserService {
     @Override
     public UserDto signup(UserDto userDto) {
 
-        if (userRepository.findOneByUsername(userDto.getUsername()).isPresent())
-            throw BRSException.throwException(USER, DUPLICATE_ENTITY, userDto.getUsername());
+        User user = userRepository.findOneByUsername(userDto.getUsername()).orElse(
+                userRepository.findOneByUsername(userDto.getEmail()).orElse(new User()));
 
-        if (userRepository.findOneByUsername(userDto.getEmail()).isPresent())
-            throw BRSException.throwException(USER, DUPLICATE_ENTITY, userDto.getEmail());
+        if (user.getVerifiedDate() != null)
+            throw BRSException.throwException(USER, DUPLICATE_ENTITY, userDto.getUsername(), userDto.getEmail());
 
-        User user = new User()
-                .setUsername(userDto.getUsername())
+        user.setUsername(userDto.getUsername())
                 .setEmail(userDto.getEmail())
                 .setPassword(passwordEncoder.encode(userDto.getPassword()))
                 .setFirstName(userDto.getFirstName())
                 .setLastName(userDto.getLastName())
                 .setMobileNumber(userDto.getMobileNumber());
 
-        UserOtp userOtp = new UserOtp()
-                .setUser(user)
+        UserOtp userOtp = otpRepository.findOneByUserId(user.getId()).orElse(new UserOtp());
+
+        userOtp.setUser(user)
                 .setExpiryDate(new Date((new Date()).getTime() + OTP_EXPIRATION_MS))
                 .setOtp(OtpUtil.generateOTP());
 
-        sendOtp(user.getEmail(), user.getMobileNumber(), userOtp.getOtp());
-
         user.setUserOtps(new HashSet<>(Collections.singletonList(userOtp)));
+
+        sendOtp(user.getEmail(), user.getMobileNumber(), userOtp.getOtp());
 
         return toUserDto(userRepository.save(user));
     }
@@ -136,7 +136,7 @@ public class UserServiceImpl implements UserService {
     public UserDto changePassword(Long userId, String oldPassword, String newPassword) {
         User user = userRepository.findById(userId).orElseThrow(() -> BRSException.throwException(USER, ENTITY_NOT_FOUND, String.valueOf(userId)));
 
-        if (!user.getPassword().equals(passwordEncoder.encode(oldPassword)))
+        if (!passwordEncoder.matches(oldPassword, user.getPassword()))
             throw BRSException.throwException(PASSWORD, ENTITY_NOT_FOUND, oldPassword);
 
         user.setPassword(passwordEncoder.encode(newPassword));

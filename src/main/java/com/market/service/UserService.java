@@ -1,6 +1,6 @@
 package com.market.service;
 
-import com.market.payload.request.UserDto;
+import com.market.payload.response.UserDto;
 import com.market.payload.response.JwtResponse;
 
 public interface UserService {

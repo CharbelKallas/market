@@ -1,5 +1,6 @@
 package com.market.repository.user;
 
+import com.market.model.user.User;
 import com.market.model.user.UserOtp;
 import org.springframework.data.jpa.repository.JpaRepository;
 

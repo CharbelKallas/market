@@ -2,8 +2,10 @@ package com.market.controller;
 
 import com.market.payload.request.*;
 import com.market.payload.response.Response;
+import com.market.payload.response.UserDto;
 import com.market.service.UserService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.access.prepost.PostAuthorize;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -19,26 +21,26 @@ public class UserController {
     private UserService userService;
 
     @PostMapping("/signup")
-    public Response<?> signup(@RequestBody @Valid UserSignupRequest userSignupRequest) {
+    public Response<?> signup(@RequestBody @Valid UserSignupRequest request) {
         UserDto userDto = new UserDto()
-                .setEmail(userSignupRequest.getEmail())
-                .setUsername(userSignupRequest.getUsername())
-                .setPassword(userSignupRequest.getPassword())
-                .setFirstName(userSignupRequest.getFirstName())
-                .setLastName(userSignupRequest.getLastName())
-                .setMobileNumber(userSignupRequest.getMobileNumber());
+                .setEmail(request.getEmail())
+                .setUsername(request.getUsername())
+                .setPassword(request.getPassword())
+                .setFirstName(request.getFirstName())
+                .setLastName(request.getLastName())
+                .setMobileNumber(request.getMobileNumber());
 
         return Response.ok().setPayload(userService.signup(userDto));
     }
 
     @PostMapping("/signin")
-    public Response<?> signin(@RequestBody @Valid LoginRequest loginRequest) {
-        return Response.ok().setPayload(userService.signin(loginRequest.getUsername(), loginRequest.getPassword()));
+    public Response<?> signin(@RequestBody @Valid LoginRequest request) {
+        return Response.ok().setPayload(userService.signin(request.getUsername(), request.getPassword()));
     }
 
     @PostMapping("/verify")
-    public Response<?> verify(@RequestBody @Valid VerifyRequest verifyRequest) {
-        Boolean verified = userService.verify(verifyRequest.getUserId(), verifyRequest.getOtp());
+    public Response<?> verify(@RequestBody @Valid VerifyRequest request) {
+        Boolean verified = userService.verify(request.getUserId(), request.getOtp());
         if (verified)
             return Response.ok().setPayload("Activated");
         else
@@ -50,4 +52,11 @@ public class UserController {
         userService.resendOtp(request.getUserId());
         return Response.ok().setPayload("Done");
     }
+
+    @PostMapping("/change_password")
+    public Response<?> changePassword(@RequestBody @Valid ChangePasswordRequest request) {
+        userService.changePassword(request.getUserId(), request.getOldPassword(), request.getNewPassword());
+        return Response.ok().setPayload("Done");
+    }
+
 }
