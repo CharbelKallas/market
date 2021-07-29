@@ -14,5 +14,5 @@ public interface UserService {
 
     UserDto updateProfile(UserDto userDto);
 
-    UserDto changePassword(Long userId, String oldPassword, String newPassword);
+    void changePassword(Long userId, String oldPassword, String newPassword);
 }

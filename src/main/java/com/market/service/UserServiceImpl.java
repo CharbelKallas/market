@@ -55,22 +55,22 @@ public class UserServiceImpl implements UserService {
     @Override
     public UserDto signup(UserDto userDto) {
 
-        User user = userRepository.findOneByUsername(userDto.getUsername()).orElse(
-                userRepository.findOneByUsername(userDto.getEmail()).orElse(new User()));
+        if (userRepository.existsByUsername(userDto.getUsername()))
+            throw BRSException.throwException(USER, DUPLICATE_ENTITY, userDto.getUsername());
 
-        if (user.getVerifiedDate() != null)
-            throw BRSException.throwException(USER, DUPLICATE_ENTITY, userDto.getUsername(), userDto.getEmail());
+        if (userRepository.existsByEmail(userDto.getEmail()))
+            throw BRSException.throwException(USER, DUPLICATE_ENTITY, userDto.getEmail());
 
-        user.setUsername(userDto.getUsername())
+        User user = new User()
+                .setUsername(userDto.getUsername())
                 .setEmail(userDto.getEmail())
                 .setPassword(passwordEncoder.encode(userDto.getPassword()))
                 .setFirstName(userDto.getFirstName())
                 .setLastName(userDto.getLastName())
                 .setMobileNumber(userDto.getMobileNumber());
 
-        UserOtp userOtp = otpRepository.findOneByUserId(user.getId()).orElse(new UserOtp());
-
-        userOtp.setUser(user)
+        UserOtp userOtp = new UserOtp()
+                .setUser(user)
                 .setExpiryDate(new Date((new Date()).getTime() + OTP_EXPIRATION_MS))
                 .setOtp(OtpUtil.generateOTP());
 
@@ -133,14 +133,14 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
-    public UserDto changePassword(Long userId, String oldPassword, String newPassword) {
+    public void changePassword(Long userId, String oldPassword, String newPassword) {
         User user = userRepository.findById(userId).orElseThrow(() -> BRSException.throwException(USER, ENTITY_NOT_FOUND, String.valueOf(userId)));
 
         if (!passwordEncoder.matches(oldPassword, user.getPassword()))
             throw BRSException.throwException(PASSWORD, ENTITY_NOT_FOUND, oldPassword);
 
         user.setPassword(passwordEncoder.encode(newPassword));
-        return toUserDto(userRepository.save(user));
+        toUserDto(userRepository.save(user));
     }
 
     public UserDto toUserDto(User user) {

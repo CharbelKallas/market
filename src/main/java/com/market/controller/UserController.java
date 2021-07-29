@@ -5,7 +5,7 @@ import com.market.payload.response.Response;
 import com.market.payload.response.UserDto;
 import com.market.service.UserService;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.security.access.prepost.PostAuthorize;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -54,6 +54,7 @@ public class UserController {
     }
 
     @PostMapping("/change_password")
+//    @PreAuthorize("hasRole('USER')")
     public Response<?> changePassword(@RequestBody @Valid ChangePasswordRequest request) {
         userService.changePassword(request.getUserId(), request.getOldPassword(), request.getNewPassword());
         return Response.ok().setPayload("Done");
