@@ -51,7 +51,7 @@ public class UserServiceImpl implements UserService {
     private UserOtpRepository otpRepository;
 
     @Autowired
-    private EmailService emailService;
+    private MessageService messageService;
 
     @Value("${app.otpExpirationMs}")
     private int otpExpirationMs;
@@ -83,7 +83,8 @@ public class UserServiceImpl implements UserService {
                 .setExpiryDate(new Date((new Date()).getTime() + otpExpirationMs))
                 .setOtp(OtpUtil.generateOTP(5));
 
-        emailService.sendSimpleMessage(user.getEmail(), "OTP verification", "Your OTP is : " + userOtp.getOtp());
+        messageService.sendEmailMessage(user.getEmail(), "OTP verification", "Your OTP is : " + userOtp.getOtp());
+        messageService.sendSmsMessage(user.getMobileNumber(), "Your OTP is : " + userOtp.getOtp());
 
         user.setUserOtps(new HashSet<>(Collections.singletonList(userOtp)));
 
@@ -120,7 +121,7 @@ public class UserServiceImpl implements UserService {
     @Override
     public void resendOtp(ResendOtpRequest request) {
 
-        UserOtp otp = otpRepository.findOneByUserId(request.getUserId()).orElseThrow(() -> exception(USER, ExceptionType.ENTITY_EXCEPTION, String.valueOf(request.getUserId())));
+        UserOtp otp = otpRepository.findOneByUserId(request.getUserId()).orElseThrow(() -> exception(USER, ExceptionType.ENTITY_EXCEPTION));
 
         otp.setUser(userRepository.getById(request.getUserId()))
                 .setExpiryDate(new Date((new Date()).getTime() + otpExpirationMs))
