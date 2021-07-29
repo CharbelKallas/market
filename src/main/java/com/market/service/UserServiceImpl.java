@@ -1,14 +1,9 @@
 package com.market.service;
 
 import com.market.exception.BRSException;
-import com.market.exception.EntityType;
-import com.market.exception.ExceptionType;
 import com.market.model.user.User;
 import com.market.model.user.UserOtp;
-import com.market.payload.request.LoginRequest;
-import com.market.payload.request.ResendOtpRequest;
 import com.market.payload.request.UserDto;
-import com.market.payload.request.VerifyRequest;
 import com.market.payload.response.JwtResponse;
 import com.market.repository.user.UserOtpRepository;
 import com.market.repository.user.UserRepository;
@@ -29,8 +24,9 @@ import java.util.Date;
 import java.util.HashSet;
 import java.util.Optional;
 
-import static com.market.exception.EntityType.USER;
+import static com.market.exception.EntityType.*;
 import static com.market.exception.ExceptionType.DUPLICATE_ENTITY;
+import static com.market.exception.ExceptionType.ENTITY_NOT_FOUND;
 
 @Component
 public class UserServiceImpl implements UserService {
@@ -54,21 +50,16 @@ public class UserServiceImpl implements UserService {
     private MessageService messageService;
 
     @Value("${app.otpExpirationMs}")
-    private int otpExpirationMs;
-
-//    @Autowired
-//    private ModelMapper modelMapper;
+    private int OTP_EXPIRATION_MS;
 
     @Override
     public UserDto signup(UserDto userDto) {
 
-        if (userRepository.existsByUsername(userDto.getUsername())) {
-            throw exception(USER, DUPLICATE_ENTITY, userDto.getUsername());
-        }
+        if (userRepository.findOneByUsername(userDto.getUsername()).isPresent())
+            throw BRSException.throwException(USER, DUPLICATE_ENTITY, userDto.getUsername());
 
-        if (userRepository.existsByEmail(userDto.getEmail())) {
-            throw exception(USER, DUPLICATE_ENTITY, userDto.getEmail());
-        }
+        if (userRepository.findOneByUsername(userDto.getEmail()).isPresent())
+            throw BRSException.throwException(USER, DUPLICATE_ENTITY, userDto.getEmail());
 
         User user = new User()
                 .setUsername(userDto.getUsername())
@@ -80,11 +71,8 @@ public class UserServiceImpl implements UserService {
 
         UserOtp userOtp = new UserOtp()
                 .setUser(user)
-                .setExpiryDate(new Date((new Date()).getTime() + otpExpirationMs))
-                .setOtp(OtpUtil.generateOTP(5));
-
-        messageService.sendEmailMessage(user.getEmail(), "OTP verification", "Your OTP is : " + userOtp.getOtp());
-        messageService.sendSmsMessage(user.getMobileNumber(), "Your OTP is : " + userOtp.getOtp());
+                .setExpiryDate(new Date((new Date()).getTime() + OTP_EXPIRATION_MS))
+                .setOtp(OtpUtil.generateOTP());
 
         user.setUserOtps(new HashSet<>(Collections.singletonList(userOtp)));
 
@@ -92,9 +80,9 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
-    public JwtResponse signin(LoginRequest loginRequest) {
+    public JwtResponse signin(String username, String password) {
         Authentication authentication = authenticationManager.authenticate(
-                new UsernamePasswordAuthenticationToken(loginRequest.getUsername(), loginRequest.getPassword()));
+                new UsernamePasswordAuthenticationToken(username, password));
 
         SecurityContextHolder.getContext().setAuthentication(authentication);
         String jwt = jwtUtils.generateJwtToken(authentication);
@@ -108,47 +96,49 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
-    public Boolean verify(VerifyRequest verifyRequest) {
-        Optional<UserOtp> userOtp = otpRepository.findOneByUserIdAndOtpAndExpiryDateGreaterThan(verifyRequest.getUserId(), verifyRequest.getOtp(), new Date());
+    public Boolean verify(Long userId, String otp) {
+        Optional<UserOtp> userOtp = otpRepository.findOneByUserIdAndOtpAndExpiryDateGreaterThan(userId, otp, new Date());
 
         if (userOtp.isPresent()) {
-            userRepository.save(userRepository.getById(verifyRequest.getUserId()).setVerifiedDate(new Date()));
+            userRepository.save(userRepository.getById(userId).setVerifiedDate(new Date()));
             otpRepository.delete(userOtp.get());
         }
         return userOtp.isPresent();
     }
 
     @Override
-    public void resendOtp(ResendOtpRequest request) {
+    public void resendOtp(Long request) {
 
-        UserOtp otp = otpRepository.findOneByUserId(request.getUserId()).orElseThrow(() -> exception(USER, ExceptionType.ENTITY_EXCEPTION));
+        UserOtp otp = otpRepository.findOneByUserId(request).orElseThrow(() ->
+                BRSException.throwException(OTP, ENTITY_NOT_FOUND));
 
-        otp.setUser(userRepository.getById(request.getUserId()))
-                .setExpiryDate(new Date((new Date()).getTime() + otpExpirationMs))
-                .setOtp(OtpUtil.generateOTP(5));
+        otp.setUser(userRepository.getById(request))
+                .setExpiryDate(new Date((new Date()).getTime() + OTP_EXPIRATION_MS))
+                .setOtp(OtpUtil.generateOTP());
+
+        sendOtp(otp.getUser().getEmail(), otp.getUser().getMobileNumber(), otp.getOtp());
 
         otpRepository.save(otp);
     }
 
-//    @Override
-//    public UserDto updateProfile(UserDto userDto) {
-//        User user = userRepository.findOneByUsername(userDto.getUsername()).orElseThrow(() -> exception(USER, ENTITY_NOT_FOUND, userDto.getEmail()));
-//        user.setFirstName(userDto.getFirstName())
-//                .setLastName(userDto.getLastName())
-//                .setMobileNumber(userDto.getMobileNumber());
-//        return toUserDto(userRepository.save(user));
-//
-//    }
+    @Override
+    public UserDto updateProfile(UserDto userDto) {
+        User user = userRepository.findOneByUsername(userDto.getUsername()).orElseThrow(() -> BRSException.throwException(USER, ENTITY_NOT_FOUND, userDto.getUsername()));
+        user.setFirstName(userDto.getFirstName())
+                .setLastName(userDto.getLastName())
+                .setMobileNumber(userDto.getMobileNumber());
+        return toUserDto(userRepository.save(user));
+    }
 
-//    @Override
-//    public UserDto changePassword(UserDto userDto, String newPassword) {
-//        User user = userRepository.findOneByUsername(userDto.getUsername()).orElseThrow(() -> exception(USER, ENTITY_NOT_FOUND, userDto.getEmail()));
-//        user.setPassword(passwordEncoder.encode(newPassword));
-//        return toUserDto(userRepository.save(user));
-//    }
+    @Override
+    public UserDto changePassword(Long userId, String oldPassword, String newPassword) {
+        User user = userRepository.findById(userId).orElseThrow(() -> BRSException.throwException(USER, ENTITY_NOT_FOUND, String.valueOf(userId)));
 
-    private RuntimeException exception(EntityType entityType, ExceptionType exceptionType, String... args) {
-        return BRSException.throwException(entityType, exceptionType, args);
+        if (!user.getPassword().equals(passwordEncoder.encode(oldPassword)))
+            throw BRSException.throwException(PASSWORD, ENTITY_NOT_FOUND, oldPassword);
+
+        user.setPassword(passwordEncoder.encode(newPassword));
+        return toUserDto(userRepository.save(user));
     }
 
     public UserDto toUserDto(User user) {
@@ -159,4 +149,10 @@ public class UserServiceImpl implements UserService {
                 .setLastName(user.getLastName())
                 .setMobileNumber(user.getMobileNumber());
     }
+
+    private void sendOtp(String email, String mobileNumber, String otp) {
+        messageService.sendEmailMessage(email, "OTP verification", "Your OTP is : " + otp);
+        messageService.sendSmsMessage(mobileNumber, "Your OTP is : " + otp);
+    }
+
 }

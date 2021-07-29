@@ -10,6 +10,10 @@ import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.stereotype.Component;
 
+import static com.market.exception.EntityType.EMAIL;
+import static com.market.exception.EntityType.SMS;
+import static com.market.exception.ExceptionType.ENTITY_EXCEPTION;
+
 @Component
 public class MessageServiceImpl implements MessageService {
 
@@ -45,7 +49,7 @@ public class MessageServiceImpl implements MessageService {
             try {
                 emailSender.send(message);
             } catch (Exception e) {
-                throw BRSException.throwException("Error sending Email : {0}", e.getMessage());
+                throw BRSException.throwException(EMAIL, ENTITY_EXCEPTION, e.getMessage());
             }
         }
     }
@@ -54,11 +58,15 @@ public class MessageServiceImpl implements MessageService {
     public void sendSmsMessage(String to, String body) {
         if (SMS_ENABLED) {
             Twilio.init(ACCOUNT_SID, AUTH_TOKEN);
-            Message message = Message.creator(
-                    new PhoneNumber(to),
-                    new PhoneNumber(TWILIO_NUMBER),
-                    body)
-                    .create();
+            try {
+                Message.creator(
+                        new PhoneNumber(to),
+                        new PhoneNumber(TWILIO_NUMBER),
+                        body)
+                        .create();
+            } catch (Exception e) {
+                throw BRSException.throwException(SMS, ENTITY_EXCEPTION, e.getMessage());
+            }
         }
     }
 }

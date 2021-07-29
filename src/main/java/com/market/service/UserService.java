@@ -1,19 +1,18 @@
 package com.market.service;
 
-import com.market.payload.request.LoginRequest;
-import com.market.payload.request.ResendOtpRequest;
 import com.market.payload.request.UserDto;
-import com.market.payload.request.VerifyRequest;
 import com.market.payload.response.JwtResponse;
 
 public interface UserService {
     UserDto signup(UserDto userDto);
 
-    JwtResponse signin(LoginRequest loginRequest);
+    JwtResponse signin(String username, String password);
 
-    Boolean verify(VerifyRequest verifyRequest);
+    Boolean verify(Long userId, String otp);
 
-    void resendOtp(ResendOtpRequest request);
-//    UserDto updateProfile(UserDto userDto);
-//    UserDto changePassword(UserDto userDto, String newPassword);
+    void resendOtp(Long request);
+
+    UserDto updateProfile(UserDto userDto);
+
+    UserDto changePassword(Long userId, String oldPassword, String newPassword);
 }

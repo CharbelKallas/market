@@ -20,30 +20,6 @@ public class UserController {
 
     @PostMapping("/signup")
     public Response<?> signup(@RequestBody @Valid UserSignupRequest userSignupRequest) {
-        return Response.ok().setPayload(registerUser(userSignupRequest));
-    }
-
-    @PostMapping("/signin")
-    public Response<?> signin(@RequestBody @Valid LoginRequest loginRequest) {
-        return Response.ok().setPayload(userService.signin(loginRequest));
-    }
-
-    @PostMapping("/verify")
-    public Response<?> verify(@RequestBody @Valid VerifyRequest verifyRequest) {
-        Boolean verified = userService.verify(verifyRequest);
-        if (verified)
-            return Response.ok().setPayload("Activated");
-        else
-            return Response.wrongCredentials().setPayload("Wrong Credentials or OTP Expired");
-    }
-
-    @PostMapping("/resend_otp")
-    public Response<?> resendOtp(@RequestBody @Valid ResendOtpRequest request) {
-        userService.resendOtp(request);
-        return Response.ok().setPayload("Done");
-    }
-
-    private UserDto registerUser(UserSignupRequest userSignupRequest) {
         UserDto userDto = new UserDto()
                 .setEmail(userSignupRequest.getEmail())
                 .setUsername(userSignupRequest.getUsername())
@@ -52,6 +28,26 @@ public class UserController {
                 .setLastName(userSignupRequest.getLastName())
                 .setMobileNumber(userSignupRequest.getMobileNumber());
 
-        return userService.signup(userDto);
+        return Response.ok().setPayload(userService.signup(userDto));
+    }
+
+    @PostMapping("/signin")
+    public Response<?> signin(@RequestBody @Valid LoginRequest loginRequest) {
+        return Response.ok().setPayload(userService.signin(loginRequest.getUsername(), loginRequest.getPassword()));
+    }
+
+    @PostMapping("/verify")
+    public Response<?> verify(@RequestBody @Valid VerifyRequest verifyRequest) {
+        Boolean verified = userService.verify(verifyRequest.getUserId(), verifyRequest.getOtp());
+        if (verified)
+            return Response.ok().setPayload("Activated");
+        else
+            return Response.wrongCredentials().setPayload("Wrong Credentials or OTP Expired");
+    }
+
+    @PostMapping("/resend_otp")
+    public Response<?> resendOtp(@RequestBody @Valid ResendOtpRequest request) {
+        userService.resendOtp(request.getUserId());
+        return Response.ok().setPayload("Done");
     }
 }

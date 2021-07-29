@@ -8,5 +8,6 @@ import java.util.Optional;
 
 public interface UserOtpRepository extends JpaRepository<UserOtp, Long> {
     Optional<UserOtp> findOneByUserIdAndOtpAndExpiryDateGreaterThan(Long id, String otp, Date expiryDate);
+
     Optional<UserOtp> findOneByUserId(Long id);
 }
