@@ -74,6 +74,8 @@ public class UserServiceImpl implements UserService {
                 .setExpiryDate(new Date((new Date()).getTime() + OTP_EXPIRATION_MS))
                 .setOtp(OtpUtil.generateOTP());
 
+        sendOtp(user.getEmail(), user.getMobileNumber(), userOtp.getOtp());
+
         user.setUserOtps(new HashSet<>(Collections.singletonList(userOtp)));
 
         return toUserDto(userRepository.save(user));
@@ -143,6 +145,7 @@ public class UserServiceImpl implements UserService {
 
     public UserDto toUserDto(User user) {
         return new UserDto()
+                .setId(user.getId())
                 .setEmail(user.getEmail())
                 .setUsername(user.getUsername())
                 .setFirstName(user.getFirstName())
