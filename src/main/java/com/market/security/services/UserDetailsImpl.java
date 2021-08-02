@@ -35,7 +35,7 @@ public class UserDetailsImpl implements UserDetails {
     }
 
     public static UserDetailsImpl build(User user) {
-        List<GrantedAuthority> authorities = new ArrayList<>() {{
+        List<GrantedAuthority> authorities = new ArrayList<GrantedAuthority>() {{
             add(new SimpleGrantedAuthority("USER"));
         }};
 
