@@ -1,10 +1,10 @@
 package com.market.service;
 
-import com.market.payload.response.UserDto;
 import com.market.payload.response.JwtResponse;
+import com.market.payload.response.UserResponse;
 
 public interface UserService {
-    UserDto signup(UserDto userDto);
+    UserResponse signup(UserResponse userResponse);
 
     JwtResponse signin(String username, String password);
 
@@ -12,7 +12,7 @@ public interface UserService {
 
     void resendOtp(Long request);
 
-    UserDto updateProfile(UserDto userDto);
+    UserResponse updateProfile(UserResponse userResponse);
 
     void changePassword(Long userId, String oldPassword, String newPassword);
 }

@@ -6,7 +6,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 import lombok.experimental.Accessors;
 
-import javax.validation.constraints.NotNull;
+import javax.validation.constraints.NotEmpty;
 
 @Getter
 @Setter
@@ -14,8 +14,8 @@ import javax.validation.constraints.NotNull;
 @NoArgsConstructor
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class LoginRequest {
-    @NotNull(message = "{constraints.NotEmpty.message}")
+    @NotEmpty
     private String username;
-    @NotNull(message = "{constraints.NotEmpty.message}")
+    @NotEmpty
     private String password;
 }

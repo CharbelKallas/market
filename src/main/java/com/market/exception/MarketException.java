@@ -8,13 +8,13 @@ import java.text.MessageFormat;
 import java.util.Optional;
 
 @Component
-public class BRSException {
+public class MarketException {
 
     private static PropertiesConfig propertiesConfig;
 
     @Autowired
-    public BRSException(PropertiesConfig propertiesConfig) {
-        BRSException.propertiesConfig = propertiesConfig;
+    public MarketException(PropertiesConfig propertiesConfig) {
+        MarketException.propertiesConfig = propertiesConfig;
     }
 
     public static RuntimeException throwException(String messageTemplate, String... args) {

@@ -1,6 +1,6 @@
 package com.market.service;
 
-import com.market.exception.BRSException;
+import com.market.exception.MarketException;
 import com.twilio.Twilio;
 import com.twilio.rest.api.v2010.account.Message;
 import com.twilio.type.PhoneNumber;
@@ -49,7 +49,7 @@ public class MessageServiceImpl implements MessageService {
             try {
                 emailSender.send(message);
             } catch (Exception e) {
-                throw BRSException.throwException(EMAIL, ENTITY_EXCEPTION, e.getMessage());
+                throw MarketException.throwException(EMAIL, ENTITY_EXCEPTION, e.getMessage());
             }
         }
     }
@@ -60,12 +60,12 @@ public class MessageServiceImpl implements MessageService {
             Twilio.init(ACCOUNT_SID, AUTH_TOKEN);
             try {
                 Message.creator(
-                        new PhoneNumber(to),
-                        new PhoneNumber(TWILIO_NUMBER),
-                        body)
+                                new PhoneNumber(to),
+                                new PhoneNumber(TWILIO_NUMBER),
+                                body)
                         .create();
             } catch (Exception e) {
-                throw BRSException.throwException(SMS, ENTITY_EXCEPTION, e.getMessage());
+                throw MarketException.throwException(SMS, ENTITY_EXCEPTION, e.getMessage());
             }
         }
     }

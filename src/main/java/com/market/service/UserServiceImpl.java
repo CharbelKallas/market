@@ -1,10 +1,10 @@
 package com.market.service;
 
-import com.market.exception.BRSException;
+import com.market.exception.MarketException;
 import com.market.model.user.User;
 import com.market.model.user.UserOtp;
 import com.market.payload.response.JwtResponse;
-import com.market.payload.response.UserDto;
+import com.market.payload.response.UserResponse;
 import com.market.repository.user.UserOtpRepository;
 import com.market.repository.user.UserRepository;
 import com.market.security.jwt.JwtUtils;
@@ -53,21 +53,21 @@ public class UserServiceImpl implements UserService {
     private int OTP_EXPIRATION_MS;
 
     @Override
-    public UserDto signup(UserDto userDto) {
+    public UserResponse signup(UserResponse userResponse) {
 
-        if (userRepository.existsByUsername(userDto.getUsername()))
-            throw BRSException.throwException(USER, DUPLICATE_ENTITY, userDto.getUsername());
+        if (userRepository.existsByUsername(userResponse.getUsername()))
+            throw MarketException.throwException(USER, DUPLICATE_ENTITY, userResponse.getUsername());
 
-        if (userRepository.existsByEmail(userDto.getEmail()))
-            throw BRSException.throwException(USER, DUPLICATE_ENTITY, userDto.getEmail());
+        if (userRepository.existsByEmail(userResponse.getEmail()))
+            throw MarketException.throwException(USER, DUPLICATE_ENTITY, userResponse.getEmail());
 
         User user = new User()
-                .setUsername(userDto.getUsername())
-                .setEmail(userDto.getEmail())
-                .setPassword(passwordEncoder.encode(userDto.getPassword()))
-                .setFirstName(userDto.getFirstName())
-                .setLastName(userDto.getLastName())
-                .setMobileNumber(userDto.getMobileNumber());
+                .setUsername(userResponse.getUsername())
+                .setEmail(userResponse.getEmail())
+                .setPassword(passwordEncoder.encode(userResponse.getPassword()))
+                .setFirstName(userResponse.getFirstName())
+                .setLastName(userResponse.getLastName())
+                .setMobileNumber(userResponse.getMobileNumber());
 
         UserOtp userOtp = new UserOtp()
                 .setUser(user)
@@ -112,7 +112,7 @@ public class UserServiceImpl implements UserService {
     public void resendOtp(Long request) {
 
         UserOtp otp = otpRepository.findOneByUserId(request).orElseThrow(() ->
-                BRSException.throwException(OTP, ENTITY_NOT_FOUND));
+                MarketException.throwException(OTP, ENTITY_NOT_FOUND));
 
         otp.setUser(userRepository.getById(request))
                 .setExpiryDate(new Date((new Date()).getTime() + OTP_EXPIRATION_MS))
@@ -124,27 +124,27 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
-    public UserDto updateProfile(UserDto userDto) {
-        User user = userRepository.findOneByUsername(userDto.getUsername()).orElseThrow(() -> BRSException.throwException(USER, ENTITY_NOT_FOUND, userDto.getUsername()));
-        user.setFirstName(userDto.getFirstName())
-                .setLastName(userDto.getLastName())
-                .setMobileNumber(userDto.getMobileNumber());
+    public UserResponse updateProfile(UserResponse userResponse) {
+        User user = userRepository.findOneByUsername(userResponse.getUsername()).orElseThrow(() -> MarketException.throwException(USER, ENTITY_NOT_FOUND, userResponse.getUsername()));
+        user.setFirstName(userResponse.getFirstName())
+                .setLastName(userResponse.getLastName())
+                .setMobileNumber(userResponse.getMobileNumber());
         return toUserDto(userRepository.save(user));
     }
 
     @Override
     public void changePassword(Long userId, String oldPassword, String newPassword) {
-        User user = userRepository.findById(userId).orElseThrow(() -> BRSException.throwException(USER, ENTITY_NOT_FOUND, String.valueOf(userId)));
+        User user = userRepository.findById(userId).orElseThrow(() -> MarketException.throwException(USER, ENTITY_NOT_FOUND, String.valueOf(userId)));
 
         if (!passwordEncoder.matches(oldPassword, user.getPassword()))
-            throw BRSException.throwException(PASSWORD, ENTITY_NOT_FOUND, oldPassword);
+            throw MarketException.throwException(PASSWORD, ENTITY_NOT_FOUND, oldPassword);
 
         user.setPassword(passwordEncoder.encode(newPassword));
         toUserDto(userRepository.save(user));
     }
 
-    public UserDto toUserDto(User user) {
-        return new UserDto()
+    public UserResponse toUserDto(User user) {
+        return new UserResponse()
                 .setId(user.getId())
                 .setEmail(user.getEmail())
                 .setUsername(user.getUsername())

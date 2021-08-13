@@ -1,11 +1,11 @@
 package com.market.controller;
 
+import com.market.payload.Response;
 import com.market.payload.request.LoginRequest;
 import com.market.payload.request.ResendOtpRequest;
 import com.market.payload.request.UserSignupRequest;
 import com.market.payload.request.VerifyRequest;
-import com.market.payload.response.Response;
-import com.market.payload.response.UserDto;
+import com.market.payload.response.UserResponse;
 import com.market.service.UserService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -24,7 +24,7 @@ public class UserController {
 
     @PostMapping("/signup")
     public Response<?> signup(@RequestBody @Valid UserSignupRequest request) {
-        UserDto userDto = new UserDto()
+        UserResponse userResponse = new UserResponse()
                 .setEmail(request.getEmail())
                 .setUsername(request.getUsername())
                 .setPassword(request.getPassword())
@@ -32,7 +32,7 @@ public class UserController {
                 .setLastName(request.getLastName())
                 .setMobileNumber(request.getMobileNumber());
 
-        return Response.ok().setPayload(userService.signup(userDto));
+        return Response.ok().setPayload(userService.signup(userResponse));
     }
 
     @PostMapping("/signin")

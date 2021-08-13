@@ -1,4 +1,4 @@
-package com.market.payload.response;
+package com.market.payload;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;

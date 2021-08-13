@@ -1,7 +1,7 @@
 package com.market.controller;
 
+import com.market.payload.Response;
 import com.market.payload.request.ChangePasswordRequest;
-import com.market.payload.response.Response;
 import com.market.service.UserService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.PostMapping;

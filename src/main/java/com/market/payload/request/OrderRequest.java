@@ -7,13 +7,19 @@ import lombok.Setter;
 import lombok.experimental.Accessors;
 
 import javax.validation.constraints.NotEmpty;
+import java.util.Set;
 
 @Getter
 @Setter
 @Accessors(chain = true)
 @NoArgsConstructor
 @JsonIgnoreProperties(ignoreUnknown = true)
-public class ResendOtpRequest {
+public class OrderRequest {
+    @NotEmpty
+    private String locationLatitide;
+    @NotEmpty
+    private String locationLongitude;
     @NotEmpty
     private Long userId;
+    private Set<Long> items;
 }
