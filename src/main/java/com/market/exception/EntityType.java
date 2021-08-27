@@ -5,5 +5,6 @@ public enum EntityType {
     PASSWORD,
     OTP,
     EMAIL,
-    SMS
+    SMS,
+    ROLE
 }

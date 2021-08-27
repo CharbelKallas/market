@@ -1,10 +1,13 @@
 package com.market.service;
 
 import com.market.exception.MarketException;
+import com.market.model.user.Role;
 import com.market.model.user.User;
 import com.market.model.user.UserOtp;
+import com.market.model.user.UserRoles;
 import com.market.payload.response.JwtResponse;
 import com.market.payload.response.UserResponse;
+import com.market.repository.user.RoleRepository;
 import com.market.repository.user.UserOtpRepository;
 import com.market.repository.user.UserRepository;
 import com.market.security.jwt.JwtUtils;
@@ -47,6 +50,9 @@ public class UserServiceImpl implements UserService {
     private UserOtpRepository otpRepository;
 
     @Autowired
+    private RoleRepository roleRepository;
+
+    @Autowired
     private MessageService messageService;
 
     @Value("${app.otpExpirationMs}")
@@ -61,13 +67,19 @@ public class UserServiceImpl implements UserService {
         if (userRepository.existsByEmail(userResponse.getEmail()))
             throw MarketException.throwException(USER, DUPLICATE_ENTITY, userResponse.getEmail());
 
+        Role userRole = roleRepository.findOneByName(UserRoles.ROLE_USER)
+                .orElseThrow(() -> MarketException.throwException(ROLE, ENTITY_NOT_FOUND, UserRoles.ROLE_USER.name()));
+
         User user = new User()
                 .setUsername(userResponse.getUsername())
                 .setEmail(userResponse.getEmail())
                 .setPassword(passwordEncoder.encode(userResponse.getPassword()))
                 .setFirstName(userResponse.getFirstName())
                 .setLastName(userResponse.getLastName())
-                .setMobileNumber(userResponse.getMobileNumber());
+                .setMobileNumber(userResponse.getMobileNumber())
+                .setRoles(new HashSet<>() {{
+                    add(userRole);
+                }});
 
         UserOtp userOtp = new UserOtp()
                 .setUser(user)
