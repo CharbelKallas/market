@@ -77,9 +77,7 @@ public class UserServiceImpl implements UserService {
                 .setFirstName(userResponse.getFirstName())
                 .setLastName(userResponse.getLastName())
                 .setMobileNumber(userResponse.getMobileNumber())
-                .setRoles(new HashSet<>() {{
-                    add(userRole);
-                }});
+                .setRoles(Collections.singleton(userRole));
 
         UserOtp userOtp = new UserOtp()
                 .setUser(user)
@@ -90,7 +88,7 @@ public class UserServiceImpl implements UserService {
 
         sendOtp(user.getEmail(), user.getMobileNumber(), userOtp.getOtp());
 
-        return toUserDto(userRepository.save(user));
+        return toUserResponse(userRepository.save(user));
     }
 
     @Override
@@ -141,7 +139,7 @@ public class UserServiceImpl implements UserService {
         user.setFirstName(userResponse.getFirstName())
                 .setLastName(userResponse.getLastName())
                 .setMobileNumber(userResponse.getMobileNumber());
-        return toUserDto(userRepository.save(user));
+        return toUserResponse(userRepository.save(user));
     }
 
     @Override
@@ -152,10 +150,10 @@ public class UserServiceImpl implements UserService {
             throw MarketException.throwException(PASSWORD, ENTITY_NOT_FOUND, oldPassword);
 
         user.setPassword(passwordEncoder.encode(newPassword));
-        toUserDto(userRepository.save(user));
+        toUserResponse(userRepository.save(user));
     }
 
-    public UserResponse toUserDto(User user) {
+    public UserResponse toUserResponse(User user) {
         return new UserResponse()
                 .setId(user.getId())
                 .setEmail(user.getEmail())

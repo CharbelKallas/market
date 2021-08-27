@@ -23,6 +23,8 @@ public class Item {
     @Column(name = "item_name")
     private String itemName;
 
+    private String amount;
+
     @OneToMany(mappedBy = "item", cascade = CascadeType.ALL)
     private Set<OrderItem> orderItems;
 

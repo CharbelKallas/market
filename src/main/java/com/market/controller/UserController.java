@@ -54,7 +54,7 @@ public class UserController {
     }
 
     @PostMapping("/change_password")
-    @PreAuthorize("hasRole('USER') or hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('USER', 'ADMIN')")
     public Response<?> changePassword(@RequestBody @Valid ChangePasswordRequest request) {
         userService.changePassword(request.getUserId(), request.getOldPassword(), request.getNewPassword());
         return Response.ok().setPayload("Done");
