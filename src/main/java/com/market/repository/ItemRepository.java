@@ -1,9 +1,9 @@
 package com.market.repository;
 
-import com.market.model.item.ItemAmount;
+import com.market.model.item.Item;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
 @Repository
-public interface ItemAmountRepository extends JpaRepository<ItemAmount, Long> {
+public interface ItemRepository extends JpaRepository<Item, Long> {
 }

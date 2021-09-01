@@ -8,8 +8,6 @@ import lombok.Setter;
 import lombok.ToString;
 import lombok.experimental.Accessors;
 
-import java.util.Set;
-
 @Getter
 @Setter
 @Accessors(chain = true)
@@ -17,9 +15,8 @@ import java.util.Set;
 @ToString
 @JsonInclude(value = JsonInclude.Include.NON_NULL)
 @JsonIgnoreProperties(ignoreUnknown = true)
-public class OrderResponse {
-    private String locationLatitide;
-    private String locationLongitude;
-    private Long userId;
-    private Set<OrderItemResponse> orderItems;
+public class OrderItemResponse {
+    private Long itemId;
+    private Integer itemQty;
+    private double amount;
 }

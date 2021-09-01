@@ -45,7 +45,7 @@ public class MarketException {
     }
 
     private static String getMessageTemplate(EntityType entityType, ExceptionType exceptionType) {
-        return entityType.name().concat(".").concat(exceptionType.getValue()).toLowerCase();
+        return entityType.name().replace("_", ".").concat(".").concat(exceptionType.getValue()).toLowerCase();
     }
 
     private static String format(String template, String... args) {

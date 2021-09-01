@@ -7,6 +7,7 @@ import lombok.Setter;
 import lombok.experimental.Accessors;
 
 import javax.validation.constraints.NotEmpty;
+import java.util.Map;
 import java.util.Set;
 
 @Getter
@@ -21,5 +22,5 @@ public class OrderRequest {
     private String locationLongitude;
     @NotEmpty
     private Long userId;
-    private Set<Long> items;
+    private Map<Long, Integer> items;
 }

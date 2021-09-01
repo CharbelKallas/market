@@ -21,11 +21,14 @@ public class OrderItem {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Column(name = "item_qty")
+    private Integer itemQty;
+
     @ManyToOne
     @JoinColumn(name = "item_amount_id")
     private ItemAmount itemAmount;
 
-    @ManyToOne
+   @ManyToOne
     @JoinColumn(name = "order_id")
     private Order order;
 

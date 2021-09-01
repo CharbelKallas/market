@@ -6,5 +6,7 @@ public enum EntityType {
     OTP,
     EMAIL,
     SMS,
-    ROLE
+    ROLE,
+    ITEM,
+    ITEM_AMOUNT
 }
