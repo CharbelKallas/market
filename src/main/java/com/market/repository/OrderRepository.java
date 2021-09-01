@@ -1,4 +1,4 @@
-package com.market.repository.user;
+package com.market.repository;
 
 import com.market.model.order.Order;
 import org.springframework.data.jpa.repository.JpaRepository;

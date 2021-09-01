@@ -1,5 +1,6 @@
 package com.market.model.order;
 
+import com.market.model.item.ItemAmount;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -20,11 +21,9 @@ public class OrderItem {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    private String amount;
-
     @ManyToOne
-    @JoinColumn(name = "item_id")
-    private Item item;
+    @JoinColumn(name = "item_amount_id")
+    private ItemAmount itemAmount;
 
     @ManyToOne
     @JoinColumn(name = "order_id")

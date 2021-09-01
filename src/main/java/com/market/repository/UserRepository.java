@@ -1,4 +1,4 @@
-package com.market.repository.user;
+package com.market.repository;
 
 import com.market.model.user.User;
 import org.springframework.data.jpa.repository.JpaRepository;

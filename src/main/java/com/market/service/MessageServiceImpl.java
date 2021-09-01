@@ -60,9 +60,9 @@ public class MessageServiceImpl implements MessageService {
             Twilio.init(ACCOUNT_SID, AUTH_TOKEN);
             try {
                 Message.creator(
-                                new PhoneNumber(to),
-                                new PhoneNumber(TWILIO_NUMBER),
-                                body)
+                        new PhoneNumber(to),
+                        new PhoneNumber(TWILIO_NUMBER),
+                        body)
                         .create();
             } catch (Exception e) {
                 throw MarketException.throwException(SMS, ENTITY_EXCEPTION, e.getMessage());

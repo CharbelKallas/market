@@ -1,18 +1,19 @@
 package com.market.service;
 
 import com.market.exception.MarketException;
-import com.market.model.order.Item;
+import com.market.model.item.ItemAmount;
 import com.market.model.order.Order;
 import com.market.model.order.OrderItem;
 import com.market.model.user.User;
 import com.market.payload.request.OrderRequest;
 import com.market.payload.response.OrderResponse;
-import com.market.repository.user.ItemRepository;
-import com.market.repository.user.OrderRepository;
-import com.market.repository.user.UserRepository;
+import com.market.repository.ItemAmountRepository;
+import com.market.repository.OrderRepository;
+import com.market.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashSet;
@@ -29,7 +30,7 @@ public class OrderServiceImpl implements OrderService {
     private UserRepository userRepository;
 
     @Autowired
-    private ItemRepository itemRepository;
+    private ItemAmountRepository itemAmountRepository;
 
     @Autowired
     private OrderRepository orderRepository;
@@ -37,7 +38,7 @@ public class OrderServiceImpl implements OrderService {
     @Override
     public OrderResponse placeOrder(OrderRequest orderRequest) {
         User user = userRepository.findById(orderRequest.getUserId()).orElseThrow(() -> MarketException.throwException(USER, ENTITY_NOT_FOUND, orderRequest.getUserId().toString()));
-        List<Item> items = itemRepository.findAllById(orderRequest.getItems());
+        List<ItemAmount> itemAmounts = itemAmountRepository.findAllByItemIdInAndActiveDateBeforeOrderByActiveDateDesc(orderRequest.getItems(), LocalDateTime.now());
 
         List<OrderItem> orderItems = new ArrayList<>();
 
@@ -48,7 +49,7 @@ public class OrderServiceImpl implements OrderService {
                 .setLocationLongitude(orderRequest.getLocationLongitude())
                 .setDeliveryCharge(2d);
 
-        items.forEach(item -> orderItems.add(new OrderItem().setItem(item).setAmount(item.getAmount()).setOrder(order)));
+        itemAmounts.forEach(itemAmount -> orderItems.add(new OrderItem().setItemAmount(itemAmount).setOrder(order)));
 
         order.setOrderItems(new HashSet<>(orderItems));
 

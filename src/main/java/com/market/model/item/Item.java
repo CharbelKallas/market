@@ -1,4 +1,4 @@
-package com.market.model.order;
+package com.market.model.item;
 
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -15,6 +15,7 @@ import java.util.Set;
 @Entity
 @Table(name = "\"item\"")
 public class Item {
+
     @Id
     @Column(name = "item_id")
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -23,9 +24,7 @@ public class Item {
     @Column(name = "item_name")
     private String itemName;
 
-    private String amount;
-
     @OneToMany(mappedBy = "item", cascade = CascadeType.ALL)
-    private Set<OrderItem> orderItems;
+    private Set<ItemAmount> itemAmounts;
 
 }
