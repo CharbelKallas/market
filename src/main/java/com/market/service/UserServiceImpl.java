@@ -20,6 +20,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
+import org.springframework.stereotype.Service;
 
 import java.util.Collections;
 import java.util.Date;
@@ -30,7 +31,7 @@ import static com.market.exception.EntityType.*;
 import static com.market.exception.ExceptionType.DUPLICATE_ENTITY;
 import static com.market.exception.ExceptionType.ENTITY_NOT_FOUND;
 
-@Component
+@Service
 public class UserServiceImpl implements UserService {
 
     @Autowired

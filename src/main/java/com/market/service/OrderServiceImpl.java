@@ -9,12 +9,11 @@ import com.market.model.user.User;
 import com.market.payload.request.OrderRequest;
 import com.market.payload.response.OrderItemResponse;
 import com.market.payload.response.OrderResponse;
-import com.market.repository.ItemAmountRepository;
 import com.market.repository.ItemRepository;
 import com.market.repository.OrderRepository;
 import com.market.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Component;
+import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.util.*;
@@ -23,7 +22,7 @@ import java.util.stream.Stream;
 import static com.market.exception.EntityType.*;
 import static com.market.exception.ExceptionType.ENTITY_NOT_FOUND;
 
-@Component
+@Service
 public class OrderServiceImpl implements OrderService {
 
     @Autowired
@@ -31,9 +30,6 @@ public class OrderServiceImpl implements OrderService {
 
     @Autowired
     private ItemRepository itemRepository;
-
-    @Autowired
-    private ItemAmountRepository itemAmountRepository;
 
     @Autowired
     private OrderRepository orderRepository;
