@@ -2,11 +2,11 @@ package com.market.service;
 
 import com.market.payload.request.NewItemRequest;
 import com.market.payload.response.ItemResponse;
-
-import java.util.List;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 
 public interface ItemService {
-    ItemResponse getById(NewItemRequest itemRequest);
+    ItemResponse save(NewItemRequest itemRequest);
 
-    List<ItemResponse> getAll(int page, int size);
+    Page<ItemResponse> getAll(Pageable pageable);
 }

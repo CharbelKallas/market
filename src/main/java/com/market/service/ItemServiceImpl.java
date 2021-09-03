@@ -9,13 +9,12 @@ import com.market.payload.request.NewItemRequest;
 import com.market.payload.response.ItemResponse;
 import com.market.repository.ItemRepository;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.util.Collections;
-import java.util.List;
-import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static com.market.exception.EntityType.ITEM_AMOUNT;
@@ -28,7 +27,7 @@ public class ItemServiceImpl implements ItemService {
     private ItemRepository itemRepository;
 
     @Override
-    public ItemResponse getById(NewItemRequest itemRequest) {
+    public ItemResponse save(NewItemRequest itemRequest) {
 
         if (itemRepository.existsByItemName(itemRequest.getItemName()))
             throw MarketException.throwException(EntityType.ITEM, ExceptionType.DUPLICATE_ENTITY, itemRequest.getItemName());
@@ -41,10 +40,9 @@ public class ItemServiceImpl implements ItemService {
     }
 
     @Override
-    public List<ItemResponse> getAll(int page, int size) {
-        return itemRepository.findAll(PageRequest.of(page, size)).get()
-                .map(item -> new ItemResponse().setItemName(item.getItemName()).setAmount(getItemAmount(item)))
-                .collect(Collectors.toList());
+    public Page<ItemResponse> getAll(Pageable pageable) {
+        return itemRepository.findAll(pageable)
+                .map(item -> new ItemResponse().setItemName(item.getItemName()).setAmount(getItemAmount(item)));
     }
 
     private ItemResponse toItemResponse(Item item) {

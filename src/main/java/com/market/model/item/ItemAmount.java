@@ -5,6 +5,8 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import lombok.experimental.Accessors;
+import org.springframework.data.annotation.CreatedDate;
+import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import javax.persistence.*;
 import java.time.LocalDateTime;
@@ -16,6 +18,7 @@ import java.util.Set;
 @Accessors(chain = true)
 @Entity
 @Table(name = "\"item_amount\"")
+@EntityListeners(AuditingEntityListener.class)
 public class ItemAmount {
 
     @Id
@@ -24,6 +27,7 @@ public class ItemAmount {
     private Long id;
 
     @Column(name = "active_date")
+    @CreatedDate
     private LocalDateTime activeDate;
 
     private double amount;
