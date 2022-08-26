@@ -5,10 +5,12 @@ import com.market.payload.request.NewItemRequest;
 import com.market.service.ItemService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.http.MediaType;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import javax.validation.Valid;
+import java.io.IOException;
 
 @RestController
 @RequestMapping("/api/item")
@@ -27,9 +29,9 @@ public class ItemController {
         return Response.ok().setPayload(itemService.getAll(PageRequest.of(page, size)));
     }
 
-    @GetMapping("/new")
+    @PostMapping(value = "/new", consumes = {MediaType.MULTIPART_FORM_DATA_VALUE})
     @PreAuthorize("hasRole('ADMIN')")
-    public Response<Object> save(@RequestBody @Valid NewItemRequest request) {
+    public Response<Object> save(@ModelAttribute @Valid NewItemRequest request) throws IOException {
         return Response.ok().setPayload(itemService.save(request));
     }
 

@@ -12,6 +12,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
+import java.io.IOException;
 import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.stream.Stream;
@@ -27,12 +28,12 @@ public class ItemServiceImpl implements ItemService {
     }
 
     @Override
-    public ItemResponse save(NewItemRequest itemRequest) {
+    public ItemResponse save(NewItemRequest itemRequest) throws IOException {
 
         if (itemRepository.existsByItemName(itemRequest.getItemName()))
             throw MarketException.throwException("Item - " + itemRequest.getItemName() + " already exists.");
 
-        Item item = new Item().setItemName(itemRequest.getItemName());
+        Item item = new Item().setItemName(itemRequest.getItemName()).setImage(itemRequest.getImage().getBytes()).setImageName(itemRequest.getImage().getOriginalFilename());
         item.setItemAmounts(Collections.singleton(new ItemAmount().setItem(item).setAmount(itemRequest.getAmount())));
 
         return toItemResponse(itemRepository.save(item));
