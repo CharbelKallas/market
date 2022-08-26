@@ -1,13 +1,12 @@
-package com.market.service;
+package com.market.service.impl;
 
-import com.market.exception.EntityType;
-import com.market.exception.ExceptionType;
 import com.market.exception.MarketException;
 import com.market.model.item.Item;
 import com.market.model.item.ItemAmount;
 import com.market.payload.request.NewItemRequest;
 import com.market.payload.response.ItemResponse;
 import com.market.repository.ItemRepository;
+import com.market.service.ItemService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -17,20 +16,21 @@ import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.stream.Stream;
 
-import static com.market.exception.EntityType.ITEM_AMOUNT;
-import static com.market.exception.ExceptionType.ENTITY_NOT_FOUND;
-
 @Service
 public class ItemServiceImpl implements ItemService {
 
+    private final ItemRepository itemRepository;
+
     @Autowired
-    private ItemRepository itemRepository;
+    public ItemServiceImpl(ItemRepository itemRepository) {
+        this.itemRepository = itemRepository;
+    }
 
     @Override
     public ItemResponse save(NewItemRequest itemRequest) {
 
         if (itemRepository.existsByItemName(itemRequest.getItemName()))
-            throw MarketException.throwException(EntityType.ITEM, ExceptionType.DUPLICATE_ENTITY, itemRequest.getItemName());
+            throw MarketException.throwException("Item - " + itemRequest.getItemName() + " already exists.");
 
         Item item = new Item().setItemName(itemRequest.getItemName());
         item.setItemAmounts(Collections.singleton(new ItemAmount().setItem(item).setAmount(itemRequest.getAmount())));
@@ -58,10 +58,10 @@ public class ItemServiceImpl implements ItemService {
             if (itemAmount == null)
                 itemAmount = (ItemAmount) o;
             else if (((ItemAmount) o).getActiveDate().isAfter(itemAmount.getActiveDate()))
-                itemAmount = (ItemAmount) o;
+                itemAmount = (ItemAmount) o; // TODO: 8/26/22
 
         if (itemAmount == null)
-            throw MarketException.throwException(ITEM_AMOUNT, ENTITY_NOT_FOUND, item.getItemName());
+            throw MarketException.throwException("Amount does not found for Item " + item.getItemName() + ".");
 
         return itemAmount.getAmount();
     }

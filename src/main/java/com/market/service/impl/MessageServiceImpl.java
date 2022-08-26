@@ -1,6 +1,7 @@
-package com.market.service;
+package com.market.service.impl;
 
 import com.market.exception.MarketException;
+import com.market.service.MessageService;
 import com.twilio.Twilio;
 import com.twilio.rest.api.v2010.account.Message;
 import com.twilio.type.PhoneNumber;
@@ -10,62 +11,62 @@ import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.stereotype.Component;
 
-import static com.market.exception.EntityType.EMAIL;
-import static com.market.exception.EntityType.SMS;
-import static com.market.exception.ExceptionType.ENTITY_EXCEPTION;
-
 @Component
 public class MessageServiceImpl implements MessageService {
 
-    @Autowired
-    private JavaMailSender emailSender;
+    private final JavaMailSender emailSender;
 
     @Value("${spring.mail.username}")
-    private String MAIL_USERNAME;
+    private String mailUsername;
 
     @Value("${mail.enabled}")
-    private boolean MAIL_ENABLED;
+    private boolean mailEnabled;
 
     @Value("${sms.enabled}")
-    private boolean SMS_ENABLED;
+    private boolean smsEnabled;
 
     @Value("${twilio.sms.account.sid}")
-    private String ACCOUNT_SID;
+    private String accountSid;
 
     @Value("${twilio.sms.auth.token}")
-    private String AUTH_TOKEN;
+    private String authToken;
 
     @Value("${twilio.sms.twilio.number}")
-    private String TWILIO_NUMBER;
+    private String twilioNumber;
+
+    @Autowired
+    public MessageServiceImpl(JavaMailSender emailSender) {
+        this.emailSender = emailSender;
+    }
 
     @Override
     public void sendEmailMessage(String to, String subject, String text) {
-        if (MAIL_ENABLED) {
+        if (mailEnabled) {
             SimpleMailMessage message = new SimpleMailMessage();
-            message.setFrom(MAIL_USERNAME);
+            message.setFrom(mailUsername);
             message.setTo(to);
             message.setSubject(subject);
             message.setText(text);
             try {
                 emailSender.send(message);
             } catch (Exception e) {
-                throw MarketException.throwException(EMAIL, ENTITY_EXCEPTION, e.getMessage());
+                throw MarketException.throwException("Email - Exception", e);
             }
         }
     }
 
     @Override
     public void sendSmsMessage(String to, String body) {
-        if (SMS_ENABLED) {
-            Twilio.init(ACCOUNT_SID, AUTH_TOKEN);
+        if (smsEnabled) {
+            Twilio.init(accountSid, authToken);
             try {
                 Message.creator(
-                        new PhoneNumber(to),
-                        new PhoneNumber(TWILIO_NUMBER),
-                        body)
+                                new PhoneNumber(to),
+                                new PhoneNumber(twilioNumber),
+                                body)
                         .create();
             } catch (Exception e) {
-                throw MarketException.throwException(SMS, ENTITY_EXCEPTION, e.getMessage());
+                throw MarketException.throwException("SMS - Exception", e);
             }
         }
     }

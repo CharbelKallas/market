@@ -14,18 +14,22 @@ import javax.validation.Valid;
 @RequestMapping("/api/item")
 public class ItemController {
 
+    private final ItemService itemService;
+
     @Autowired
-    private ItemService itemService;
+    public ItemController(ItemService itemService) {
+        this.itemService = itemService;
+    }
 
     @GetMapping("/all")
     @PreAuthorize("hasRole('USER')")
-    public Response<?> getAll(@RequestParam int page, @RequestParam int size) {
+    public Response<Object> getAll(@RequestParam int page, @RequestParam int size) {
         return Response.ok().setPayload(itemService.getAll(PageRequest.of(page, size)));
     }
 
     @GetMapping("/new")
     @PreAuthorize("hasRole('ADMIN')")
-    public Response<?> save(@RequestBody @Valid NewItemRequest request) {
+    public Response<Object> save(@RequestBody @Valid NewItemRequest request) {
         return Response.ok().setPayload(itemService.save(request));
     }
 

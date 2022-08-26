@@ -15,11 +15,15 @@ import javax.validation.Valid;
 @RequestMapping("/api/order")
 public class OrderController {
 
+    public final OrderService orderService;
+
     @Autowired
-    OrderService orderService;
+    public OrderController(OrderService orderService) {
+        this.orderService = orderService;
+    }
 
     @PostMapping("/place")
-    public Response<?> placeOrder(@RequestBody @Valid OrderRequest request) {
+    public Response<Object> placeOrder(@RequestBody @Valid OrderRequest request) {
         return Response.ok().setPayload(orderService.placeOrder(request));
     }
 

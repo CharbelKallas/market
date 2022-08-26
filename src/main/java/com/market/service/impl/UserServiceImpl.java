@@ -1,4 +1,4 @@
-package com.market.service;
+package com.market.service.impl;
 
 import com.market.exception.MarketException;
 import com.market.model.user.Role;
@@ -11,7 +11,8 @@ import com.market.repository.UserOtpRepository;
 import com.market.repository.UserRepository;
 import com.market.security.jwt.JwtUtils;
 import com.market.security.services.UserDetailsImpl;
-import com.market.util.OtpUtil;
+import com.market.service.MessageService;
+import com.market.service.UserService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -26,42 +27,44 @@ import java.util.Date;
 import java.util.HashSet;
 import java.util.Optional;
 
-import static com.market.exception.EntityType.*;
-import static com.market.exception.ExceptionType.DUPLICATE_ENTITY;
-import static com.market.exception.ExceptionType.ENTITY_NOT_FOUND;
-
 @Service
 public class UserServiceImpl implements UserService {
 
-    @Autowired
-    private AuthenticationManager authenticationManager;
+    private final AuthenticationManager authenticationManager;
 
-    @Autowired
-    private JwtUtils jwtUtils;
+    private final JwtUtils jwtUtils;
 
-    @Autowired
-    private PasswordEncoder passwordEncoder;
+    private final PasswordEncoder passwordEncoder;
 
-    @Autowired
-    private UserRepository userRepository;
+    private final UserRepository userRepository;
 
-    @Autowired
-    private UserOtpRepository otpRepository;
+    private final UserOtpRepository otpRepository;
 
-    @Autowired
-    private MessageService messageService;
+    private final MessageService messageService;
 
     @Value("${app.otpExpirationMs}")
-    private int OTP_EXPIRATION_MS;
+    private int otpExpirationMs;
+    @Value("${otp.size}")
+    private double otpSize;
+
+    @Autowired
+    public UserServiceImpl(AuthenticationManager authenticationManager, JwtUtils jwtUtils, PasswordEncoder passwordEncoder, UserRepository userRepository, UserOtpRepository otpRepository, MessageService messageService) {
+        this.authenticationManager = authenticationManager;
+        this.jwtUtils = jwtUtils;
+        this.passwordEncoder = passwordEncoder;
+        this.userRepository = userRepository;
+        this.otpRepository = otpRepository;
+        this.messageService = messageService;
+    }
 
     @Override
     public UserResponse signup(UserResponse userResponse) {
 
         if (userRepository.existsByUsername(userResponse.getUsername()))
-            throw MarketException.throwException(USER, DUPLICATE_ENTITY, userResponse.getUsername());
+            throw MarketException.throwException("User - " + userResponse.getUsername() + " already exists.");
 
         if (userRepository.existsByEmail(userResponse.getEmail()))
-            throw MarketException.throwException(USER, DUPLICATE_ENTITY, userResponse.getEmail());
+            throw MarketException.throwException("User - " + userResponse.getEmail() + " already exists.");
 
         User user = new User()
                 .setUsername(userResponse.getUsername())
@@ -75,8 +78,8 @@ public class UserServiceImpl implements UserService {
 
         UserOtp userOtp = new UserOtp()
                 .setUser(user)
-                .setExpiryDate(new Date((new Date()).getTime() + OTP_EXPIRATION_MS))
-                .setOtp(OtpUtil.generateOTP());
+                .setExpiryDate(new Date((new Date()).getTime() + otpExpirationMs))
+                .setOtp(generateOTP());
 
         user.setUserOtps(new HashSet<>(Collections.singletonList(userOtp)));
 
@@ -116,20 +119,25 @@ public class UserServiceImpl implements UserService {
     public void resendOtp(Long request) {
 
         UserOtp otp = otpRepository.findOneByUserId(request).orElseThrow(() ->
-                MarketException.throwException(OTP, ENTITY_NOT_FOUND));
+                MarketException.throwException("OTP for User does not exist."));
 
         otp.setUser(userRepository.getById(request))
-                .setExpiryDate(new Date((new Date()).getTime() + OTP_EXPIRATION_MS))
-                .setOtp(OtpUtil.generateOTP());
+                .setExpiryDate(new Date((new Date()).getTime() + otpExpirationMs))
+                .setOtp(generateOTP());
 
         sendOtp(otp.getUser().getEmail(), otp.getUser().getMobileNumber(), otp.getOtp());
 
         otpRepository.save(otp);
     }
 
+    private String generateOTP() {
+        int otp = (int) ((Math.random() * 9 * Math.pow(10, otpSize - 1)) + (Math.pow(10, otpSize - 1)));
+        return String.valueOf(otp);
+    }
+
     @Override
     public UserResponse updateProfile(UserResponse userResponse) {
-        User user = userRepository.findOneByUsername(userResponse.getUsername()).orElseThrow(() -> MarketException.throwException(USER, ENTITY_NOT_FOUND, userResponse.getUsername()));
+        User user = userRepository.findOneByUsername(userResponse.getUsername()).orElseThrow(() -> MarketException.throwException("User - " + userResponse.getUsername() + " does not exist."));
         user.setFirstName(userResponse.getFirstName())
                 .setLastName(userResponse.getLastName())
                 .setMobileNumber(userResponse.getMobileNumber());
@@ -138,10 +146,11 @@ public class UserServiceImpl implements UserService {
 
     @Override
     public void changePassword(Long userId, String oldPassword, String newPassword) {
-        User user = userRepository.findById(userId).orElseThrow(() -> MarketException.throwException(USER, ENTITY_NOT_FOUND, String.valueOf(userId)));
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> MarketException.throwException("User - " + userId + " does not exist."));
 
         if (!passwordEncoder.matches(oldPassword, user.getPassword()))
-            throw MarketException.throwException(PASSWORD, ENTITY_NOT_FOUND, oldPassword);
+            throw MarketException.throwException("The Old Password is not valid");
 
         user.setPassword(passwordEncoder.encode(newPassword));
         toUserResponse(userRepository.save(user));

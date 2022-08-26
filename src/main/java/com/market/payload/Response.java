@@ -2,11 +2,12 @@ package com.market.payload;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
-import com.market.util.DateUtils;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import lombok.experimental.Accessors;
+
+import java.util.Date;
 
 @Getter
 @Setter
@@ -79,7 +80,7 @@ public class Response<T> {
         ResponseError error = new ResponseError()
                 .setDetails(errorMsg)
                 .setMessage(ex.getMessage())
-                .setTimestamp(DateUtils.today());
+                .setTimestamp(new Date());
         setErrors(error);
     }
 

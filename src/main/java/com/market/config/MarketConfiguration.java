@@ -1,6 +1,5 @@
 package com.market.config;
 
-import com.market.security.jwt.AuthTokenFilter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.data.jpa.repository.config.EnableJpaAuditing;
@@ -10,11 +9,6 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 @Configuration
 @EnableJpaAuditing
 public class MarketConfiguration {
-
-    @Bean
-    public AuthTokenFilter authTokenFilter() {
-        return new AuthTokenFilter();
-    }
 
     @Bean
     public PasswordEncoder passwordEncoder() {

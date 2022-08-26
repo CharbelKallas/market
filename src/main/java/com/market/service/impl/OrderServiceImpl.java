@@ -1,4 +1,4 @@
-package com.market.service;
+package com.market.service.impl;
 
 import com.market.exception.MarketException;
 import com.market.model.item.Item;
@@ -12,6 +12,7 @@ import com.market.payload.response.OrderResponse;
 import com.market.repository.ItemRepository;
 import com.market.repository.OrderRepository;
 import com.market.repository.UserRepository;
+import com.market.service.OrderService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -19,24 +20,26 @@ import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Stream;
 
-import static com.market.exception.EntityType.*;
-import static com.market.exception.ExceptionType.ENTITY_NOT_FOUND;
-
 @Service
 public class OrderServiceImpl implements OrderService {
 
-    @Autowired
-    private UserRepository userRepository;
+    private final UserRepository userRepository;
+
+    private final ItemRepository itemRepository;
+
+    private final OrderRepository orderRepository;
 
     @Autowired
-    private ItemRepository itemRepository;
-
-    @Autowired
-    private OrderRepository orderRepository;
+    public OrderServiceImpl(UserRepository userRepository, ItemRepository itemRepository, OrderRepository orderRepository) {
+        this.userRepository = userRepository;
+        this.itemRepository = itemRepository;
+        this.orderRepository = orderRepository;
+    }
 
     @Override
     public OrderResponse placeOrder(OrderRequest orderRequest) {
-        User user = userRepository.findById(orderRequest.getUserId()).orElseThrow(() -> MarketException.throwException(USER, ENTITY_NOT_FOUND, orderRequest.getUserId().toString()));
+        User user = userRepository.findById(orderRequest.getUserId())
+                .orElseThrow(() -> MarketException.throwException("User - " + orderRequest.getUserId() + " does not exist."));
 
         List<OrderItem> orderItems = new ArrayList<>();
 
@@ -48,7 +51,8 @@ public class OrderServiceImpl implements OrderService {
                 .setDeliveryCharge(2d);
 
         orderRequest.getItems().forEach((itemId, qty) -> {
-            Item item = itemRepository.findById(itemId).orElseThrow(() -> MarketException.throwException(ITEM, ENTITY_NOT_FOUND, itemId.toString()));
+            Item item = itemRepository.findById(itemId)
+                    .orElseThrow(() -> MarketException.throwException("item " + itemId + " does not found."));
 
             Stream<ItemAmount> amountStream = item.getItemAmounts().stream().filter(itemAmount -> itemAmount.getActiveDate().isBefore(LocalDateTime.now()));
             ItemAmount itemAmount = null;
@@ -56,10 +60,10 @@ public class OrderServiceImpl implements OrderService {
                 if (itemAmount == null)
                     itemAmount = (ItemAmount) o;
                 else if (((ItemAmount) o).getActiveDate().isAfter(itemAmount.getActiveDate()))
-                    itemAmount = (ItemAmount) o;
+                    itemAmount = (ItemAmount) o; // TODO: 8/26/22
 
             if (itemAmount == null)
-                throw MarketException.throwException(ITEM_AMOUNT, ENTITY_NOT_FOUND, item.getItemName());
+                throw MarketException.throwException("Amount does not found for Item " + item.getItemName() + ".");
 
             orderItems.add(new OrderItem().setItemAmount(itemAmount).setItemQty(qty).setOrder(order));
         });

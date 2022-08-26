@@ -17,11 +17,15 @@ import javax.validation.Valid;
 @RequestMapping("/api/user")
 public class UserController {
 
+    private final UserService userService;
+
     @Autowired
-    private UserService userService;
+    public UserController(UserService userService) {
+        this.userService = userService;
+    }
 
     @PostMapping("/signup")
-    public Response<?> signup(@RequestBody @Valid UserSignupRequest request) {
+    public Response<Object> signup(@RequestBody @Valid UserSignupRequest request) {
         UserResponse userResponse = new UserResponse()
                 .setEmail(request.getEmail())
                 .setUsername(request.getUsername())
@@ -34,12 +38,12 @@ public class UserController {
     }
 
     @PostMapping("/signin")
-    public Response<?> signin(@RequestBody @Valid LoginRequest request) {
+    public Response<Object> signin(@RequestBody @Valid LoginRequest request) {
         return Response.ok().setPayload(userService.signin(request.getUsername(), request.getPassword()));
     }
 
     @PostMapping("/verify")
-    public Response<?> verify(@RequestBody @Valid VerifyRequest request) {
+    public Response<Object> verify(@RequestBody @Valid VerifyRequest request) {
         Boolean verified = userService.verify(request.getUserId(), request.getOtp());
         if (verified)
             return Response.ok().setPayload("Activated");
@@ -48,14 +52,14 @@ public class UserController {
     }
 
     @PostMapping("/resend_otp")
-    public Response<?> resendOtp(@RequestBody @Valid ResendOtpRequest request) {
+    public Response<Object> resendOtp(@RequestBody @Valid ResendOtpRequest request) {
         userService.resendOtp(request.getUserId());
         return Response.ok().setPayload("Done");
     }
 
     @PostMapping("/change_password")
     @PreAuthorize("hasAnyRole('USER', 'ADMIN')")
-    public Response<?> changePassword(@RequestBody @Valid ChangePasswordRequest request) {
+    public Response<Object> changePassword(@RequestBody @Valid ChangePasswordRequest request) {
         userService.changePassword(request.getUserId(), request.getOldPassword(), request.getNewPassword());
         return Response.ok().setPayload("Done");
     }

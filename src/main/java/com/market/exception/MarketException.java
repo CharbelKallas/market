@@ -1,68 +1,43 @@
 package com.market.exception;
 
-import com.market.config.PropertiesConfig;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Component;
+public class MarketException extends RuntimeException {
 
-import java.text.MessageFormat;
-import java.util.Optional;
-
-@Component
-public class MarketException {
-
-    private static PropertiesConfig propertiesConfig;
-
-    @Autowired
-    public MarketException(PropertiesConfig propertiesConfig) {
-        MarketException.propertiesConfig = propertiesConfig;
+    private MarketException(String message) {
+        super(message);
     }
 
-    public static RuntimeException throwException(String messageTemplate, String... args) {
-        return new RuntimeException(format(messageTemplate, args));
+    private MarketException(String message, Throwable cause) {
+        super(message, cause);
     }
 
-    public static RuntimeException throwException(EntityType entityType, ExceptionType exceptionType, String... args) {
-        String messageTemplate = getMessageTemplate(entityType, exceptionType);
-        return throwException(exceptionType, messageTemplate, args);
+    private MarketException(Throwable cause) {
+        super(cause);
     }
 
-    public static RuntimeException throwExceptionWithId(EntityType entityType, ExceptionType exceptionType, Integer id, String... args) {
-        String messageTemplate = getMessageTemplate(entityType, exceptionType).concat(".").concat(id.toString());
-        return throwException(exceptionType, messageTemplate, args);
+    private MarketException(String message, Throwable cause, boolean enableSuppression, boolean writableStackTrace) {
+        super(message, cause, enableSuppression, writableStackTrace);
     }
 
-    public static RuntimeException throwExceptionWithTemplate(EntityType entityType, ExceptionType exceptionType, String messageTemplate, String... args) {
-        return throwException(exceptionType, messageTemplate, args);
+    private MarketException() {
     }
 
-    private static RuntimeException throwException(ExceptionType exceptionType, String messageTemplate, String... args) {
-        if (ExceptionType.ENTITY_NOT_FOUND.equals(exceptionType)) {
-            return new EntityNotFoundException(format(messageTemplate, args));
-        } else if (ExceptionType.DUPLICATE_ENTITY.equals(exceptionType)) {
-            return new DuplicateEntityException(format(messageTemplate, args));
-        }
-        return new RuntimeException(format(messageTemplate, args));
+    public static RuntimeException throwException(String message) {
+        return new MarketException(message);
     }
 
-    private static String getMessageTemplate(EntityType entityType, ExceptionType exceptionType) {
-        return entityType.name().replace("_", ".").concat(".").concat(exceptionType.getValue()).toLowerCase();
+    public static RuntimeException throwException(String message, Throwable cause) {
+        return new MarketException(message, cause);
     }
 
-    private static String format(String template, String... args) {
-        Optional<String> templateContent = Optional.ofNullable(propertiesConfig.getConfigValue(template));
-        return templateContent.map(s -> MessageFormat.format(s, (Object[]) args)).orElseGet(() -> String.format(template, (Object[]) args));
+    public static RuntimeException throwException(Throwable cause) {
+        return new MarketException(cause);
     }
 
-    public static class EntityNotFoundException extends RuntimeException {
-        public EntityNotFoundException(String message) {
-            super(message);
-        }
+    public static RuntimeException throwException(String message, Throwable cause, boolean enableSuppression, boolean writableStackTrace) {
+        return new MarketException(message, cause, enableSuppression, writableStackTrace);
     }
 
-    public static class DuplicateEntityException extends RuntimeException {
-        public DuplicateEntityException(String message) {
-            super(message);
-        }
+    public static RuntimeException throwException() {
+        return new MarketException();
     }
-
 }
