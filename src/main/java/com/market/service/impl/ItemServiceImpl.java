@@ -33,7 +33,11 @@ public class ItemServiceImpl implements ItemService {
         if (itemRepository.existsByItemName(itemRequest.getItemName()))
             throw MarketException.throwException("Item - " + itemRequest.getItemName() + " already exists.");
 
-        Item item = new Item().setItemName(itemRequest.getItemName()).setImage(itemRequest.getImage().getBytes()).setImageName(itemRequest.getImage().getOriginalFilename());
+        Item item = new Item()
+                .setItemName(itemRequest.getItemName())
+                .setImage(itemRequest.getImage().getBytes())
+                .setContentType(itemRequest.getImage().getContentType())
+                .setImageName(itemRequest.getImage().getOriginalFilename());
         item.setItemAmounts(Collections.singleton(new ItemAmount().setItem(item).setAmount(itemRequest.getAmount())));
 
         return toItemResponse(itemRepository.save(item));
@@ -44,6 +48,12 @@ public class ItemServiceImpl implements ItemService {
     public Page<ItemResponse> getAll(Pageable pageable) {
         return itemRepository.findAll(pageable)
                 .map(item -> new ItemResponse().setItemName(item.getItemName()).setAmount(getItemAmount(item)));
+    }
+
+    @Override
+    public Item getItem(Long itemId) {
+        return itemRepository.findById(itemId)
+                .orElseThrow(() -> MarketException.throwException("item " + itemId + " does not found."));
     }
 
     private ItemResponse toItemResponse(Item item) {

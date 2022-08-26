@@ -32,6 +32,9 @@ public class Item {
     @Column(name = "image_name")
     private String imageName;
 
+    @Column(name = "content_type")
+    private String contentType;
+
     @OneToMany(mappedBy = "item", cascade = CascadeType.ALL)
     private Set<ItemAmount> itemAmounts;
 
