@@ -5,6 +5,7 @@ import org.springframework.stereotype.Service;
 
 import java.net.Inet6Address;
 import java.net.InetAddress;
+import java.util.Iterator;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
@@ -35,14 +36,16 @@ public class LoginAttemptService {
     static final long LOCK_MS = 15 * 60 * 1000L;
 
     /** How long a successful sign-in keeps a (username, client) pair trusted through a client-wide block. */
-    static final long TRUSTED_MS = 30L * 24 * 60 * 60 * 1000;
+    static final long TRUSTED_MS = 7L * 24 * 60 * 60 * 1000;
 
     /** Upper bound per map, so a flood of random usernames or addresses can't exhaust memory. */
     static final int MAX_ENTRIES = 100_000;
 
     private static final long CLEANUP_INTERVAL_MS = 60_000;
 
-    private static final Pattern IPV4 = Pattern.compile("^\\d{1,3}(\\.\\d{1,3}){3}$");
+    /** Four dot-separated numbers from 0 to 255: anything else could make InetAddress fall back to a DNS lookup. */
+    private static final Pattern IPV4 = Pattern.compile(
+            "^(25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)(\\.(25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)){3}$");
 
     private static final Pattern IPV6 = Pattern.compile("^[0-9a-fA-F:.]+$");
 
@@ -79,8 +82,16 @@ public class LoginAttemptService {
         String pair = username + '\n' + clientKey(clientIp);
         long now = System.currentTimeMillis();
         pairs.map.remove(pair);
-        if (trusted.hasRoomFor(pair, now, at -> at < now - TRUSTED_MS))
-            trusted.map.put(pair, now);
+        // Trust is only a convenience, so when the map is full of live entries an arbitrary one makes room for the
+        // newest sign-in, rather than the newest users missing out.
+        if (!trusted.hasRoomFor(pair, now, at -> at < now - TRUSTED_MS)) {
+            Iterator<String> oldest = trusted.map.keySet().iterator();
+            if (oldest.hasNext()) {
+                oldest.next();
+                oldest.remove();
+            }
+        }
+        trusted.map.put(pair, now);
     }
 
     private static void recordFailure(Tracker<Attempts> tracker, String key, int maxAttempts, long now) {

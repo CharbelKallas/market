@@ -43,7 +43,7 @@ All settings come from environment variables; none of the secrets have real defa
 
 Email is off by default. Set `MAIL_ENABLED=true` with SMTP credentials to send OTPs; otherwise read the OTP from the database (`user_otp` table).
 
-Sign-in is blocked for 15 minutes after 5 wrong passwords in a row for the same username from the same IP address, so an attacker can't lock the real user out. One IP address making 500 failed sign-ins (across any usernames) is blocked for 15 minutes too, except for users who have signed in successfully from it before. The client IP is read from `X-Forwarded-For` when the request comes through a proxy on a private network (`FORWARD_HEADERS_STRATEGY`, default `native`).
+Sign-in is blocked for 15 minutes after 5 wrong passwords in a row for the same username from the same IP address, so an attacker can't lock the real user out. One IP address making 500 failed sign-ins (across any usernames) is blocked for 15 minutes too, except for users who have signed in successfully from it before. The client IP is read from `X-Forwarded-For` only when the request comes from a trusted proxy. By default that is only a proxy on the same host; behind a load balancer, set `TRUSTED_PROXIES` to a regular expression matching its addresses (for example `10\.0\.\d+\.\d+`). Don't trust a whole private range unless only your proxies can reach the app: with Docker port publishing, for instance, every client arrives from a private gateway address and could then fake its IP.
 
 **Single instance only:** these counters are kept in memory, so they reset on restart and aren't shared between instances. Before running several instances, move them to a shared store (a database table or Redis).
 

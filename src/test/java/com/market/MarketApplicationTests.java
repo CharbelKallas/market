@@ -385,6 +385,7 @@ class MarketApplicationTests {
     @Test
     void clientKeyNeverResolvesHostnames() {
         assertThat(LoginAttemptService.clientKey("random123.attacker.example")).isEqualTo("random123.attacker.example");
+        assertThat(LoginAttemptService.clientKey("999.10.20.30")).isEqualTo("999.10.20.30");
         assertThat(LoginAttemptService.clientKey("10.1.2.3")).isEqualTo("10.1.2.3");
         assertThat(LoginAttemptService.clientKey("2001:db8:1:2::7")).isEqualTo("20010db800010002::/64");
     }
