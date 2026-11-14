@@ -3,9 +3,7 @@ package com.market.service;
 import com.market.exception.MarketException;
 import org.springframework.stereotype.Service;
 
-import java.net.Inet6Address;
-import java.net.InetAddress;
-import java.util.regex.Pattern;
+import static com.market.service.ClientAddresses.clientKey;
 
 /**
  * Throttles password guessing:
@@ -35,12 +33,6 @@ public class LoginAttemptService {
 
     /** Upper bound per map; when full, the least recently used entry is dropped (see {@link BoundedLruMap}). */
     static final int MAX_ENTRIES = 100_000;
-
-    /** Four dot-separated numbers from 0 to 255: anything else could make InetAddress fall back to a DNS lookup. */
-    private static final Pattern IPV4 = Pattern.compile(
-            "^(25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)(\\.(25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)){3}$");
-
-    private static final Pattern IPV6 = Pattern.compile("^[0-9a-fA-F:.]+$");
 
     private final BoundedLruMap<Attempts> pairs = new BoundedLruMap<>(MAX_ENTRIES);
 
@@ -108,42 +100,6 @@ public class LoginAttemptService {
 
     private static long blockedUntil(Attempts entry) {
         return entry == null ? 0 : entry.blockedUntil;
-    }
-
-    /**
-     * The full address for IPv4; the /64 network for IPv6. Only numeric literals are parsed (never a DNS lookup);
-     * anything else is used as given.
-     */
-    public static String clientKey(String clientIp) {
-        if (clientIp == null)
-            return "unknown";
-        InetAddress address = parseLiteral(clientIp);
-        if (address == null)
-            return clientIp;
-        if (address instanceof Inet6Address) {
-            byte[] bytes = address.getAddress();
-            StringBuilder prefix = new StringBuilder();
-            for (int i = 0; i < 8; i++)
-                prefix.append(String.format("%02x", bytes[i]));
-            return prefix + "::/64";
-        }
-        return address.getHostAddress();
-    }
-
-    /** Parses a numeric IPv4/IPv6 literal, or returns null for anything else. Never does a DNS lookup. */
-    public static InetAddress parseLiteral(String text) {
-        if (text == null)
-            return null;
-        boolean ipv4 = IPV4.matcher(text).matches();
-        boolean ipv6 = !ipv4 && text.indexOf(':') >= 0 && IPV6.matcher(text).matches();
-        if (!ipv4 && !ipv6)
-            return null;
-        try {
-            // A valid numeric literal: InetAddress parses it without any lookup.
-            return InetAddress.getByName(text);
-        } catch (Exception e) {
-            return null;
-        }
     }
 
     private static final class Attempts {

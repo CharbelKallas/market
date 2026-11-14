@@ -10,6 +10,7 @@ import com.market.exception.MarketException;
 import com.market.repository.UserOtpRepository;
 import com.market.repository.UserRepository;
 import com.market.config.UntrustedProxyDetector;
+import com.market.service.ClientAddresses;
 import com.market.service.BoundedLruMap;
 import com.market.service.LoginAttemptService;
 import com.market.service.MessageService;
@@ -457,10 +458,10 @@ class MarketApplicationTests {
 
     @Test
     void clientKeyNeverResolvesHostnames() {
-        assertThat(LoginAttemptService.clientKey("random123.attacker.example")).isEqualTo("random123.attacker.example");
-        assertThat(LoginAttemptService.clientKey("999.10.20.30")).isEqualTo("999.10.20.30");
-        assertThat(LoginAttemptService.clientKey("10.1.2.3")).isEqualTo("10.1.2.3");
-        assertThat(LoginAttemptService.clientKey("2001:db8:1:2::7")).isEqualTo("20010db800010002::/64");
+        assertThat(ClientAddresses.clientKey("random123.attacker.example")).isEqualTo("random123.attacker.example");
+        assertThat(ClientAddresses.clientKey("999.10.20.30")).isEqualTo("999.10.20.30");
+        assertThat(ClientAddresses.clientKey("10.1.2.3")).isEqualTo("10.1.2.3");
+        assertThat(ClientAddresses.clientKey("2001:db8:1:2::7")).isEqualTo("20010db800010002::/64");
     }
 
     @Test
@@ -621,24 +622,39 @@ class MarketApplicationTests {
     }
 
     @Test
-    void untrustedProxyIsReportedOnce() throws Exception {
-        assertThat(UntrustedProxyDetector.isPrivateAddress("10.42.0.7")).isTrue();
-        assertThat(UntrustedProxyDetector.isPrivateAddress("fd12:3456::1")).isTrue();
-        assertThat(UntrustedProxyDetector.isPrivateAddress("203.0.113.9")).isFalse();
-        assertThat(UntrustedProxyDetector.isPrivateAddress("999.1.1.1")).isFalse();
+    void untrustedProxyIsReportedPeriodically() throws Exception {
+        assertThat(ClientAddresses.isPrivateAddress("10.42.0.7")).isTrue();
+        assertThat(ClientAddresses.isPrivateAddress("fd12:3456::1")).isTrue();
+        assertThat(ClientAddresses.isPrivateAddress("100.64.0.1")).isTrue();
+        assertThat(ClientAddresses.isPrivateAddress("100.127.255.254")).isTrue();
+        assertThat(ClientAddresses.isPrivateAddress("169.254.1.1")).isTrue();
+        assertThat(ClientAddresses.isPrivateAddress("fe80::1")).isTrue();
+        assertThat(ClientAddresses.isPrivateAddress("100.128.0.1")).isFalse();
+        assertThat(ClientAddresses.isPrivateAddress("100.63.255.255")).isFalse();
+        assertThat(ClientAddresses.isPrivateAddress("203.0.113.9")).isFalse();
+        assertThat(ClientAddresses.isPrivateAddress("999.1.1.1")).isFalse();
 
         UntrustedProxyDetector detector = new UntrustedProxyDetector();
-        MockHttpServletRequest direct = new MockHttpServletRequest();
-        direct.setRemoteAddr("203.0.113.9");
-        direct.addHeader("X-Forwarded-For", "198.51.100.1");
-        detector.doFilter(direct, new MockHttpServletResponse(), new MockFilterChain());
-        assertThat(detector.hasWarned()).isFalse();
+        detector.doFilter(forwarded("203.0.113.9"), new MockHttpServletResponse(), new MockFilterChain());
+        assertThat(detector.warningCount()).isZero();
 
-        MockHttpServletRequest viaProxy = new MockHttpServletRequest();
-        viaProxy.setRemoteAddr("10.42.0.7");
-        viaProxy.addHeader("X-Forwarded-For", "198.51.100.1");
-        detector.doFilter(viaProxy, new MockHttpServletResponse(), new MockFilterChain());
-        assertThat(detector.hasWarned()).isTrue();
+        detector.doFilter(forwarded("10.42.0.7"), new MockHttpServletResponse(), new MockFilterChain());
+        detector.doFilter(forwarded("10.42.0.7"), new MockHttpServletResponse(), new MockFilterChain());
+        assertThat(detector.warningCount()).isEqualTo(1);
+
+        // Once the interval has passed, the warning is logged again.
+        UntrustedProxyDetector repeating = new UntrustedProxyDetector(0);
+        repeating.doFilter(forwarded("100.64.0.1"), new MockHttpServletResponse(), new MockFilterChain());
+        Thread.sleep(2);
+        repeating.doFilter(forwarded("100.64.0.1"), new MockHttpServletResponse(), new MockFilterChain());
+        assertThat(repeating.warningCount()).isEqualTo(2);
+    }
+
+    private static MockHttpServletRequest forwarded(String remoteAddr) {
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.setRemoteAddr(remoteAddr);
+        request.addHeader("X-Forwarded-For", "198.51.100.1");
+        return request;
     }
 
     @Test

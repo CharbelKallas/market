@@ -39,7 +39,7 @@ public class SignupRateLimiter {
 
     /** Reserves a sign-up for this client, or throws 429 if a limit is reached. Always pair with {@link #finish}. */
     public void begin(String clientIp) {
-        String client = LoginAttemptService.clientKey(clientIp);
+        String client = ClientAddresses.clientKey(clientIp);
         long now = System.currentTimeMillis();
         long[] retryAt = {0};
         windows.compute(client, (key, current) -> {
@@ -61,7 +61,7 @@ public class SignupRateLimiter {
 
     /** Ends a sign-up reserved with {@link #begin}; conflict = it hit an email or username already taken. */
     public void finish(String clientIp, boolean conflict) {
-        windows.computeIfPresent(LoginAttemptService.clientKey(clientIp), (key, window) -> {
+        windows.computeIfPresent(ClientAddresses.clientKey(clientIp), (key, window) -> {
             window.inFlight = Math.max(0, window.inFlight - 1);
             if (conflict)
                 window.conflicts++;
