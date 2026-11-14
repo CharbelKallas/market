@@ -371,12 +371,22 @@ class MarketApplicationTests {
                 .hasMessageContaining("Too many failed sign-ins");
         attempts.checkNotBlocked("victim", "2001:db8:1:3::1");
 
-        // Spraying many usernames from one address hits the per-client cap.
-        for (int i = 0; i < 50; i++)
+        // Spraying many usernames from one address hits the per-client cap...
+        attempts.recordSuccess("colleague", "10.0.0.9");
+        for (int i = 0; i < 500; i++)
             attempts.recordFailure("user" + i, "10.0.0.9");
         assertThatThrownBy(() -> attempts.checkNotBlocked("someone-else", "10.0.0.9"))
                 .isInstanceOf(MarketException.class)
                 .satisfies(e -> assertThat(((MarketException) e).getRetryAfterSeconds()).isPositive());
+        // ...but users who already signed in from that shared address are not locked out with it.
+        attempts.checkNotBlocked("colleague", "10.0.0.9");
+    }
+
+    @Test
+    void clientKeyNeverResolvesHostnames() {
+        assertThat(LoginAttemptService.clientKey("random123.attacker.example")).isEqualTo("random123.attacker.example");
+        assertThat(LoginAttemptService.clientKey("10.1.2.3")).isEqualTo("10.1.2.3");
+        assertThat(LoginAttemptService.clientKey("2001:db8:1:2::7")).isEqualTo("20010db800010002::/64");
     }
 
     @Test

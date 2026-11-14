@@ -43,7 +43,9 @@ All settings come from environment variables; none of the secrets have real defa
 
 Email is off by default. Set `MAIL_ENABLED=true` with SMTP credentials to send OTPs; otherwise read the OTP from the database (`user_otp` table).
 
-Sign-in is blocked for 15 minutes after 5 wrong passwords in a row for the same username from the same IP address, so an attacker can't lock the real user out. This is tracked in memory per instance. Behind a reverse proxy, set `FORWARD_HEADERS_STRATEGY=native` so the real client IP is used.
+Sign-in is blocked for 15 minutes after 5 wrong passwords in a row for the same username from the same IP address, so an attacker can't lock the real user out. One IP address making 500 failed sign-ins (across any usernames) is blocked for 15 minutes too, except for users who have signed in successfully from it before. The client IP is read from `X-Forwarded-For` when the request comes through a proxy on a private network (`FORWARD_HEADERS_STRATEGY`, default `native`).
+
+**Single instance only:** these counters are kept in memory, so they reset on restart and aren't shared between instances. Before running several instances, move them to a shared store (a database table or Redis).
 
 An OTP stops working after 5 wrong guesses. A new one can be requested at most once a minute and 5 times a day. An unverified account whose OTP has expired is removed when someone signs up again with the same username or email.
 

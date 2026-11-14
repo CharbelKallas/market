@@ -3,13 +3,11 @@ package com.market.service;
 import com.market.exception.MarketException;
 import com.market.model.user.User;
 import com.market.model.user.UserOtp;
-import com.market.payload.Response;
 import com.market.repository.UserOtpRepository;
 import com.market.repository.UserRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -135,10 +133,9 @@ public class OtpService {
         UserOtp saved = otpRepository.save(otp);
 
         afterCommit(user, saved.getOtp(), () -> {
-            otpRepository.restore(saved.getId(), before.code, before.expiryDate, before.sentDate,
+            otpRepository.restore(saved.getId(), saved.getOtp(), before.code, before.expiryDate, before.sentDate,
                     before.failedAttempts, before.resendCount);
-            throw new MarketException("Could not send the OTP. Please try again later.",
-                    HttpStatus.SERVICE_UNAVAILABLE, Response.Status.EXCEPTION);
+            throw MarketException.serviceUnavailable("Could not send the OTP. Please try again later.", 60);
         });
     }
 
