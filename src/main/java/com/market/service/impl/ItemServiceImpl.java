@@ -16,6 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.util.Locale;
 
 @Service
 public class ItemServiceImpl implements ItemService {
@@ -31,7 +32,7 @@ public class ItemServiceImpl implements ItemService {
     public ItemResponse save(NewItemRequest itemRequest) {
         // "Apple", " apple" and "APPLE" are the same item; inner runs of spaces collapse to one.
         String itemName = itemRequest.getItemName().trim().replaceAll("\\s+", " ");
-        if (itemRepository.existsByItemNameIgnoreCase(itemName))
+        if (itemRepository.existsByItemKey(itemName.toLowerCase(Locale.ROOT)))
             throw MarketException.duplicate("Item - " + itemName + " already exists.");
 
         Item item = new Item().setItemName(itemName);

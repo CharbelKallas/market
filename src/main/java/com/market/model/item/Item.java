@@ -10,6 +10,7 @@ import javax.persistence.*;
 import java.time.LocalDateTime;
 import java.util.Comparator;
 import java.util.HashSet;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
 
@@ -26,8 +27,18 @@ public class Item {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "item_name", nullable = false, unique = true)
+    @Column(name = "item_name", nullable = false)
     private String itemName;
+
+    /** Lower-case item name; its unique constraint makes "Apple" and "apple" the same item even under races. */
+    @Column(name = "item_key", nullable = false, unique = true)
+    private String itemKey;
+
+    public Item setItemName(String itemName) {
+        this.itemName = itemName;
+        this.itemKey = itemName == null ? null : itemName.toLowerCase(Locale.ROOT);
+        return this;
+    }
 
     /** Lazy: the FK lives on this side, so a proxy stands in and image bytes load only when read. */
     @OneToOne(fetch = FetchType.LAZY, cascade = CascadeType.ALL, orphanRemoval = true)

@@ -23,8 +23,9 @@ public class ItemImage {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    // bytea, not @Lob: on PostgreSQL @Lob maps to a large-object OID that can't be read outside a transaction.
-    @Column(name = "data", nullable = false, columnDefinition = "bytea")
+    // Plain byte[] (bytea), not @Lob: on PostgreSQL @Lob maps to a large-object OID that can't be read outside a
+    // transaction.
+    @Column(name = "data", nullable = false)
     private byte[] data;
 
     @Column(name = "image_name")

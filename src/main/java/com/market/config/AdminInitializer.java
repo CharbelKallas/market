@@ -62,11 +62,16 @@ public class AdminInitializer implements ApplicationRunner {
             if (!isAdmin) {
                 log.warn("ADMIN_USERNAME '{}' belongs to an existing non-admin user, so no admin was created. "
                         + "Choose another ADMIN_USERNAME.", username);
-            } else if (!passwordEncoder.matches(password, user.getPassword())) {
-                // ADMIN_PASSWORD was changed (for example after a leak): apply it and sign out old sessions.
-                user.setPassword(passwordEncoder.encode(password))
+            } else if (user.getBootstrapPasswordHash() == null
+                    || !passwordEncoder.matches(password, user.getBootstrapPasswordHash())) {
+                // ADMIN_PASSWORD itself changed (for example after a leak): apply it and sign out old sessions.
+                // If only the admin's own password changed (through the API), the environment value is unchanged
+                // and nothing happens here.
+                String hash = passwordEncoder.encode(password);
+                user.setPassword(hash)
+                        .setBootstrapPasswordHash(hash)
                         .setTokenVersion(user.getTokenVersion() + 1);
-                log.info("Updated the password of admin user '{}' from ADMIN_PASSWORD", username);
+                log.info("Applied a new ADMIN_PASSWORD to admin user '{}'", username);
             }
             return;
         }
@@ -78,9 +83,11 @@ public class AdminInitializer implements ApplicationRunner {
             adminEmail = null;
         }
 
+        String hash = passwordEncoder.encode(password);
         User admin = new User()
                 .setUsername(username)
-                .setPassword(passwordEncoder.encode(password))
+                .setPassword(hash)
+                .setBootstrapPasswordHash(hash)
                 .setEmail(adminEmail)
                 .setFirstName("Admin")
                 .setLastName("Admin")

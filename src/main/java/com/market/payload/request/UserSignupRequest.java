@@ -8,6 +8,7 @@ import lombok.experimental.Accessors;
 
 import javax.validation.constraints.Email;
 import javax.validation.constraints.NotBlank;
+import javax.validation.constraints.Pattern;
 import javax.validation.constraints.Size;
 
 @Getter
@@ -21,7 +22,8 @@ public class UserSignupRequest {
     private String email;
 
     @NotBlank
-    @Size(min = 3, max = 50)
+    @Pattern(regexp = "^[A-Za-z0-9._-]{3,50}$",
+            message = "must be 3-50 characters: letters, digits, '.', '_' or '-'")
     private String username;
 
     @NotBlank

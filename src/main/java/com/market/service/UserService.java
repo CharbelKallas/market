@@ -13,5 +13,6 @@ public interface UserService {
 
     void resendOtp(Long userId);
 
-    void changePassword(Long userId, String oldPassword, String newPassword);
+    /** Returns a new token: all earlier tokens, including the caller's, stop working. */
+    JwtResponse changePassword(Long userId, String oldPassword, String newPassword);
 }

@@ -45,8 +45,22 @@ public class User {
     private Date verifiedDate;
 
     /** Embedded in each JWT; bumping it (on password change) invalidates all earlier tokens. */
-    @Column(name = "token_version", nullable = false, columnDefinition = "integer not null default 0")
+    @Column(name = "token_version", nullable = false)
     private int tokenVersion;
+
+    /** Consecutive wrong passwords; reaching the limit sets lockedUntil. */
+    @Column(name = "failed_signin_attempts", nullable = false)
+    private int failedSigninAttempts;
+
+    @Column(name = "locked_until")
+    private Date lockedUntil;
+
+    /**
+     * Only for the bootstrapped admin: a hash of the ADMIN_PASSWORD value last applied, so a restart re-applies the
+     * environment password only when it changed, not when the admin changed their password through the API.
+     */
+    @Column(name = "bootstrap_password_hash")
+    private String bootstrapPasswordHash;
 
     @OneToMany(mappedBy = "user", cascade = CascadeType.ALL)
     private Set<UserOtp> userOtps;

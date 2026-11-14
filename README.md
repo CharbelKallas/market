@@ -33,7 +33,6 @@ All settings come from environment variables; none of the secrets have real defa
 | Variable | Purpose | Default |
 | --- | --- | --- |
 | `DB_URL`, `DB_USERNAME`, `DB_PASSWORD` | PostgreSQL connection | local `market` database |
-| `DDL_AUTO` | Hibernate schema mode | `update` |
 | `JWT_SECRET` | JWT signing key, at least 32 bytes | **required** (`./gradlew bootRun` sets a local-only value) |
 | `JWT_EXPIRATION_MS` | Token lifetime | 1 day |
 | `ADMIN_USERNAME`, `ADMIN_PASSWORD`, `ADMIN_EMAIL` | Creates an admin account at startup if it doesn't exist | unset (no admin) |
@@ -44,17 +43,21 @@ All settings come from environment variables; none of the secrets have real defa
 
 Email is off by default. Set `MAIL_ENABLED=true` with SMTP credentials to send OTPs; otherwise read the OTP from the database (`user_otp` table).
 
+Sign-in locks an account for 15 minutes after 5 wrong passwords in a row.
+
 An OTP stops working after 5 wrong guesses. A new one can be requested at most once a minute and 5 times a day. An unverified account whose OTP has expired is removed when someone signs up again with the same username or email.
 
 Changing the password signs out every existing session (older tokens stop working).
 
 Usernames and emails are case-insensitive (stored lower-case). Item names are unique regardless of case.
 
-`ADMIN_PASSWORD` is re-applied on every start: changing it updates the existing admin and signs out its sessions.
+Changing `ADMIN_PASSWORD` and restarting updates the existing admin's password and signs out its sessions. If the admin changed their own password in the app, a restart with the same `ADMIN_PASSWORD` keeps it.
 
-### Upgrading an existing database
+### Database schema
 
-`DDL_AUTO=update` adds new tables and columns but never changes or drops existing ones. A database created by an older version of this app (before item images moved to their own `item_image` table, prices became `numeric`, and order coordinates became numbers) must be dropped and recreated once, for example by running with `DDL_AUTO=create` one time. Older versions recreated the schema on every start, so there is no data worth keeping in it.
+The schema is managed by [Flyway](https://flywaydb.org/) migrations in `src/main/resources/db/migration`, applied automatically at startup. Hibernate only validates that the entities match. To change the schema, add a new `V<n>__description.sql` file; never edit one that has already run.
+
+A database created by an older version of this app (which let Hibernate create tables) has no Flyway history, and Flyway refuses to start on it. Drop and recreate that database once. Older versions recreated the schema on every start, so there is no data worth keeping in it.
 
 ## API
 
@@ -62,15 +65,15 @@ Every JSON response has the shape `{ "status": "OK", "payload": ..., "errors": .
 
 | Method | Path | Who | Body |
 | --- | --- | --- | --- |
-| POST | `/api/user/signup` | anyone | `username`, `email`, `password` (8+ chars), `firstName`, `lastName`, `mobileNumber` |
+| POST | `/api/user/signup` | anyone | `username` (3-50 letters, digits, `.`, `_`, `-`), `email`, `password` (8+ chars), `firstName`, `lastName`, `mobileNumber` |
 | POST | `/api/user/verify` | anyone | `userId`, `otp` |
 | POST | `/api/user/resend_otp` | anyone | `userId` |
 | POST | `/api/user/signin` | anyone | `username`, `password` → `token` |
-| POST | `/api/user/change_password` | signed in | `oldPassword`, `newPassword` |
+| POST | `/api/user/change_password` | signed in | `oldPassword`, `newPassword` → new `token` (older tokens stop working) |
 | GET | `/api/item/all?page=0&size=20` | user / admin | — |
 | GET | `/api/item/image?itemId=1` | user / admin | — (returns the image) |
 | POST | `/api/item/new` | admin | multipart: `itemName`, `amount`, optional `image` (PNG, JPEG, GIF or WebP) |
-| POST | `/api/order/place` | user | `locationLatitude`, `locationLongitude`, `items` (`{ "<itemId>": <qty> }`) |
+| POST | `/api/order/place` | user | `locationLatitude`, `locationLongitude`, `items` (`{ "<itemId>": <qty> }`, up to 100 items) |
 
 ## Tests
 

@@ -30,11 +30,11 @@ public class UserOtp {
     private Date sentDate;
 
     /** Wrong guesses against this OTP; it stops working once the limit is reached. */
-    @Column(name = "failed_attempts", nullable = false, columnDefinition = "integer not null default 0")
+    @Column(name = "failed_attempts", nullable = false)
     private int failedAttempts;
 
     /** Resends within the current 24-hour window, capped so the guess limit can't be reset forever. */
-    @Column(name = "resend_count", nullable = false, columnDefinition = "integer not null default 0")
+    @Column(name = "resend_count", nullable = false)
     private int resendCount;
 
     @Column(name = "resend_window_start")

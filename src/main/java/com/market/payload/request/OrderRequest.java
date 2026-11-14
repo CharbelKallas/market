@@ -11,6 +11,7 @@ import javax.validation.constraints.DecimalMin;
 import javax.validation.constraints.NotEmpty;
 import javax.validation.constraints.NotNull;
 import javax.validation.constraints.Positive;
+import javax.validation.constraints.Size;
 import java.util.Map;
 
 @Getter
@@ -31,5 +32,6 @@ public class OrderRequest {
 
     /** Item id to quantity. */
     @NotEmpty
+    @Size(max = 100)
     private Map<@NotNull Long, @NotNull @Positive Integer> items;
 }

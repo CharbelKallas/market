@@ -49,12 +49,12 @@ public class UserController {
         return Response.<String>ok().setPayload("Done");
     }
 
-    /** Changes the password of the signed-in user. */
+    /** Changes the signed-in user's password and returns a new token (older tokens stop working). */
     @PostMapping("/change_password")
     @PreAuthorize("isAuthenticated()")
-    public Response<String> changePassword(@AuthenticationPrincipal UserDetailsImpl user,
-                                           @RequestBody @Valid ChangePasswordRequest request) {
-        userService.changePassword(user.getId(), request.getOldPassword(), request.getNewPassword());
-        return Response.<String>ok().setPayload("Done");
+    public Response<JwtResponse> changePassword(@AuthenticationPrincipal UserDetailsImpl user,
+                                                @RequestBody @Valid ChangePasswordRequest request) {
+        return Response.<JwtResponse>ok()
+                .setPayload(userService.changePassword(user.getId(), request.getOldPassword(), request.getNewPassword()));
     }
 }

@@ -181,16 +181,18 @@ class MarketApplicationTests {
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isBadRequest());
 
-        mvc.perform(post("/api/user/change_password").contentType(MediaType.APPLICATION_JSON)
+        String newToken = body(mvc.perform(post("/api/user/change_password").contentType(MediaType.APPLICATION_JSON)
                         .content(json(Map.of("oldPassword", "password123", "newPassword", "newpassword123")))
                         .header("Authorization", "Bearer " + token))
-                .andExpect(status().isOk());
+                .andExpect(status().isOk()).andReturn()).path("payload").path("token").asText();
 
         signin("bob", "newpassword123");
 
-        // Tokens issued before the change no longer work.
+        // Tokens issued before the change no longer work; the one returned by the change does.
         mvc.perform(get("/api/item/all").header("Authorization", "Bearer " + token))
                 .andExpect(status().isUnauthorized());
+        mvc.perform(get("/api/item/all").header("Authorization", "Bearer " + newToken))
+                .andExpect(status().isOk());
     }
 
     @Test
@@ -216,16 +218,92 @@ class MarketApplicationTests {
     }
 
     @Test
-    void adminPasswordFromEnvironmentIsAppliedOnRestart() throws Exception {
-        String oldToken = signin("admin", "admin-password");
+    void adminPasswordFromEnvironmentIsAppliedOnlyWhenItChanges() throws Exception {
+        // A dedicated admin, so a failure here can't leave the shared "admin" account changed for other tests.
+        runAdminInitializer("rotation-admin", "first-password", "");
+        String token = signin("rotation-admin", "first-password");
 
-        runAdminInitializer("admin", "rotated-password", "");
-        signin("admin", "rotated-password");
-        mvc.perform(get("/api/item/all").header("Authorization", "Bearer " + oldToken))
+        // The admin changes their own password; a restart with the same ADMIN_PASSWORD keeps it.
+        token = body(mvc.perform(post("/api/user/change_password").contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of("oldPassword", "first-password", "newPassword", "own-password")))
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk()).andReturn()).path("payload").path("token").asText();
+        runAdminInitializer("rotation-admin", "first-password", "");
+        signin("rotation-admin", "own-password");
+
+        // A new ADMIN_PASSWORD is applied and signs out existing sessions.
+        runAdminInitializer("rotation-admin", "second-password", "");
+        signin("rotation-admin", "second-password");
+        mvc.perform(get("/api/item/all").header("Authorization", "Bearer " + token))
                 .andExpect(status().isUnauthorized());
+    }
 
-        runAdminInitializer("admin", "admin-password", "");
-        signin("admin", "admin-password");
+    @Test
+    void signinLocksAfterRepeatedWrongPasswords() throws Exception {
+        long userId = signup("liam", "liam@example.com");
+        verifyUser(userId, "liam@example.com");
+
+        for (int i = 0; i < 5; i++)
+            mvc.perform(post("/api/user/signin").contentType(MediaType.APPLICATION_JSON)
+                            .content(json(Map.of("username", "liam", "password", "wrong-password"))))
+                    .andExpect(status().isUnauthorized());
+
+        mvc.perform(post("/api/user/signin").contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of("username", "liam", "password", "password123"))))
+                .andExpect(status().isTooManyRequests());
+    }
+
+    @Test
+    void signinResetsFailureCountAfterSuccess() throws Exception {
+        long userId = signup("mia", "mia@example.com");
+        verifyUser(userId, "mia@example.com");
+        for (int round = 0; round < 2; round++) {
+            for (int i = 0; i < 4; i++)
+                mvc.perform(post("/api/user/signin").contentType(MediaType.APPLICATION_JSON)
+                                .content(json(Map.of("username", "mia", "password", "wrong-password"))))
+                        .andExpect(status().isUnauthorized());
+            signin("mia", "password123");
+        }
+    }
+
+    @Test
+    void failedResendIsReportedAndNotCounted() throws Exception {
+        long userId = signup("noah", "noah@example.com");
+        var otp = otpRepository.findOneByUserId(userId).orElseThrow();
+        otpRepository.save(otp.setSentDate(new Date(System.currentTimeMillis() - 120_000)));
+
+        doThrow(new RuntimeException("SMTP down")).when(messageService)
+                .sendEmailMessage(eq("noah@example.com"), anyString(), anyString());
+        mvc.perform(post("/api/user/resend_otp").contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of("userId", userId))))
+                .andExpect(status().isServiceUnavailable());
+
+        otp = otpRepository.findOneByUserId(userId).orElseThrow();
+        assertThat(otp.getResendCount()).isZero();
+        assertThat(otp.getSentDate()).isNull();
+    }
+
+    @Test
+    void ordersAndUsernamesAreBounded() throws Exception {
+        mvc.perform(post("/api/user/signup").contentType(MediaType.APPLICATION_JSON)
+                        .content(json(signupBody("  ab  ", "short@example.com"))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors.details.username").exists());
+        mvc.perform(post("/api/user/signup").contentType(MediaType.APPLICATION_JSON)
+                        .content(json(signupBody("john smith", "john@example.com"))))
+                .andExpect(status().isBadRequest());
+
+        long userId = signup("olga", "olga@example.com");
+        verifyUser(userId, "olga@example.com");
+        String token = signin("olga", "password123");
+        Map<String, Integer> items = new java.util.HashMap<>();
+        for (int i = 1; i <= 101; i++)
+            items.put(String.valueOf(i), 1);
+        mvc.perform(post("/api/order/place").contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of("locationLatitude", 1, "locationLongitude", 1, "items", items)))
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors.details.items").exists());
     }
 
     @Test

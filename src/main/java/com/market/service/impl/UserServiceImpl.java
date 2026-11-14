@@ -17,7 +17,10 @@ import com.market.service.UserService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import com.market.payload.Response;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.DisabledException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
@@ -47,6 +50,10 @@ public class UserServiceImpl implements UserService {
     static final long OTP_RESEND_COOLDOWN_MS = 60_000;
 
     static final int MAX_RESENDS_PER_DAY = 5;
+
+    static final int MAX_SIGNIN_ATTEMPTS = 5;
+
+    static final long SIGNIN_LOCK_MS = 15 * 60 * 1000L;
 
     private static final long DAY_MS = 24 * 60 * 60 * 1000L;
 
@@ -108,24 +115,46 @@ public class UserServiceImpl implements UserService {
         user.setUserOtps(new HashSet<>(Set.of(userOtp)));
 
         User saved = userRepository.save(user);
-        sendOtpAfterCommit(saved, userOtp.getOtp());
+        // The account exists either way; if the code can't be sent the user can ask for a new one.
+        sendOtpAfterCommit(saved, userOtp.getOtp(), null);
 
         return toUserResponse(saved);
     }
 
     @Override
     public JwtResponse signin(String username, String password) {
-        Authentication authentication = authenticationManager.authenticate(
-                new UsernamePasswordAuthenticationToken(User.normalizeIdentifier(username), password));
+        String normalized = User.normalizeIdentifier(username);
+        Optional<User> user = userRepository.findOneByUsername(normalized);
+        if (user.isPresent() && user.get().getLockedUntil() != null && user.get().getLockedUntil().after(new Date()))
+            throw new MarketException("Too many failed sign-ins. Please try again later.",
+                    HttpStatus.TOO_MANY_REQUESTS, Response.Status.UNAUTHORIZED);
+
+        Authentication authentication;
+        try {
+            authentication = authenticationManager.authenticate(
+                    new UsernamePasswordAuthenticationToken(normalized, password));
+        } catch (BadCredentialsException e) {
+            if (user.isPresent()) {
+                userRepository.incrementFailedSignins(normalized);
+                userRepository.lockIfTooManyFailedSignins(normalized, MAX_SIGNIN_ATTEMPTS,
+                        new Date(System.currentTimeMillis() + SIGNIN_LOCK_MS));
+            }
+            throw e;
+        }
 
         UserDetailsImpl userDetails = (UserDetailsImpl) authentication.getPrincipal();
+        if (user.isPresent() && (user.get().getFailedSigninAttempts() > 0 || user.get().getLockedUntil() != null))
+            userRepository.resetFailedSignins(userDetails.getId());
+
         // Checked only after the password matched, so it doesn't reveal which usernames exist.
         if (!userDetails.isVerified())
             throw new DisabledException("Account is not verified yet");
 
-        String jwt = jwtUtils.generateJwtToken(authentication);
+        return toJwtResponse(userDetails);
+    }
 
-        return new JwtResponse(jwt,
+    private JwtResponse toJwtResponse(UserDetailsImpl userDetails) {
+        return new JwtResponse(jwtUtils.generateJwtToken(userDetails),
                 userDetails.getId(),
                 userDetails.getUsername(),
                 userDetails.getEmail());
@@ -184,14 +213,18 @@ public class UserServiceImpl implements UserService {
                 .setFailedAttempts(0)
                 .setResendCount(otp.getResendCount() + 1)
                 .setOtp(generateOtp());
-        otpRepository.save(otp);
+        UserOtp saved = otpRepository.save(otp);
 
-        sendOtpAfterCommit(user, otp.getOtp());
+        sendOtpAfterCommit(user, saved.getOtp(), () -> {
+            otpRepository.undoResend(saved.getId());
+            throw new MarketException("Could not send the OTP. Please try again later.",
+                    HttpStatus.SERVICE_UNAVAILABLE, Response.Status.EXCEPTION);
+        });
     }
 
     @Override
     @Transactional
-    public void changePassword(Long userId, String oldPassword, String newPassword) {
+    public JwtResponse changePassword(Long userId, String oldPassword, String newPassword) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> MarketException.notFound("User - " + userId + " does not exist."));
 
@@ -200,6 +233,8 @@ public class UserServiceImpl implements UserService {
 
         user.setPassword(passwordEncoder.encode(newPassword))
                 .setTokenVersion(user.getTokenVersion() + 1);
+        // Every older token (including the caller's) is now invalid, so hand back a fresh one.
+        return toJwtResponse(UserDetailsImpl.build(user));
     }
 
     private UserOtp newOtp(User user) {
@@ -243,26 +278,31 @@ public class UserServiceImpl implements UserService {
 
     /**
      * Sends the OTP only once the transaction has committed, so no DB connection is held during the SMTP/SMS call
-     * and nobody receives a code for an account that was rolled back. The data is already saved by then, so a send
-     * failure is logged rather than turned into an error response; the user can request a new code.
+     * and nobody receives a code for an account that was rolled back. A send failure is logged, then onFailure (if
+     * given) runs; it may undo state and throw, which reaches the client.
      */
-    private void sendOtpAfterCommit(User user, String otp) {
+    private void sendOtpAfterCommit(User user, String otp, Runnable onFailure) {
         String email = user.getEmail();
         String mobileNumber = user.getMobileNumber();
         Long userId = user.getId();
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             @Override
             public void afterCommit() {
+                boolean failed = false;
                 try {
                     messageService.sendEmailMessage(email, "OTP verification", "Your OTP is : " + otp);
                 } catch (RuntimeException e) {
+                    failed = true;
                     log.error("Could not send the OTP email to user {}", userId, e);
                 }
                 try {
                     messageService.sendSmsMessage(mobileNumber, "Your OTP is : " + otp);
                 } catch (RuntimeException e) {
+                    failed = true;
                     log.error("Could not send the OTP SMS to user {}", userId, e);
                 }
+                if (failed && onFailure != null)
+                    onFailure.run();
             }
         });
     }
