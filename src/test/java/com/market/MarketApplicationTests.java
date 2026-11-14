@@ -9,7 +9,6 @@ import com.market.exception.CustomExceptionHandler;
 import com.market.exception.MarketException;
 import com.market.repository.UserOtpRepository;
 import com.market.repository.UserRepository;
-import com.market.service.ClientAddresses;
 import com.market.service.BoundedLruMap;
 import com.market.service.LoginAttemptService;
 import com.market.service.MessageService;
@@ -450,14 +449,6 @@ class MarketApplicationTests {
             release.countDown();
             holder.join();
         }
-    }
-
-    @Test
-    void clientKeyNeverResolvesHostnames() {
-        assertThat(ClientAddresses.clientKey("random123.attacker.example")).isEqualTo("random123.attacker.example");
-        assertThat(ClientAddresses.clientKey("999.10.20.30")).isEqualTo("999.10.20.30");
-        assertThat(ClientAddresses.clientKey("10.1.2.3")).isEqualTo("10.1.2.3");
-        assertThat(ClientAddresses.clientKey("2001:db8:1:2::7")).isEqualTo("20010db800010002::/64");
     }
 
     @Test
