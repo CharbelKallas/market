@@ -2,8 +2,11 @@ package com.market.controller;
 
 import com.market.payload.Response;
 import com.market.payload.request.OrderRequest;
+import com.market.payload.response.OrderResponse;
+import com.market.security.services.UserDetailsImpl;
 import com.market.service.OrderService;
-import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -15,17 +18,18 @@ import javax.validation.Valid;
 @RequestMapping("/api/order")
 public class OrderController {
 
-    public final OrderService orderService;
+    private final OrderService orderService;
 
-    @Autowired
     public OrderController(OrderService orderService) {
         this.orderService = orderService;
     }
 
+    /** Places an order for the signed-in user. */
     @PostMapping("/place")
-    public Response<Object> placeOrder(@RequestBody @Valid OrderRequest request) {
-        return Response.ok().setPayload(orderService.placeOrder(request));
+    @PreAuthorize("hasRole('USER')")
+    public Response<OrderResponse> placeOrder(@AuthenticationPrincipal UserDetailsImpl user,
+                                              @RequestBody @Valid OrderRequest request) {
+        return Response.<OrderResponse>ok().setPayload(orderService.placeOrder(user.getId(), request));
     }
-
 
 }

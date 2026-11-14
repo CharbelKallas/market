@@ -1,43 +1,42 @@
 package com.market.exception;
 
+import com.market.payload.Response;
+import lombok.Getter;
+import org.springframework.http.HttpStatus;
+
+/**
+ * A business error that is reported to the client with a specific HTTP status.
+ */
+@Getter
 public class MarketException extends RuntimeException {
 
-    private MarketException(String message) {
-        super(message);
+    private final HttpStatus httpStatus;
+
+    private final Response.Status status;
+
+    public MarketException(String message, HttpStatus httpStatus, Response.Status status) {
+        this(message, httpStatus, status, null);
     }
 
-    private MarketException(String message, Throwable cause) {
+    public MarketException(String message, HttpStatus httpStatus, Response.Status status, Throwable cause) {
         super(message, cause);
+        this.httpStatus = httpStatus;
+        this.status = status;
     }
 
-    private MarketException(Throwable cause) {
-        super(cause);
+    public static MarketException badRequest(String message) {
+        return new MarketException(message, HttpStatus.BAD_REQUEST, Response.Status.BAD_REQUEST);
     }
 
-    private MarketException(String message, Throwable cause, boolean enableSuppression, boolean writableStackTrace) {
-        super(message, cause, enableSuppression, writableStackTrace);
+    public static MarketException notFound(String message) {
+        return new MarketException(message, HttpStatus.NOT_FOUND, Response.Status.NOT_FOUND);
     }
 
-    private MarketException() {
+    public static MarketException duplicate(String message) {
+        return new MarketException(message, HttpStatus.CONFLICT, Response.Status.DUPLICATE_ENTITY);
     }
 
-    public static RuntimeException throwException(String message) {
-        return new MarketException(message);
-    }
-
-    public static RuntimeException throwException(String message, Throwable cause) {
-        return new MarketException(message, cause);
-    }
-
-    public static RuntimeException throwException(Throwable cause) {
-        return new MarketException(cause);
-    }
-
-    public static RuntimeException throwException(String message, Throwable cause, boolean enableSuppression, boolean writableStackTrace) {
-        return new MarketException(message, cause, enableSuppression, writableStackTrace);
-    }
-
-    public static RuntimeException throwException() {
-        return new MarketException();
+    public static MarketException internal(String message, Throwable cause) {
+        return new MarketException(message, HttpStatus.INTERNAL_SERVER_ERROR, Response.Status.EXCEPTION, cause);
     }
 }

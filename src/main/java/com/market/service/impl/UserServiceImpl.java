@@ -5,6 +5,7 @@ import com.market.model.user.Role;
 import com.market.model.user.User;
 import com.market.model.user.UserOtp;
 import com.market.model.user.UserRole;
+import com.market.payload.request.UserSignupRequest;
 import com.market.payload.response.JwtResponse;
 import com.market.payload.response.UserResponse;
 import com.market.repository.UserOtpRepository;
@@ -13,22 +14,24 @@ import com.market.security.jwt.JwtUtils;
 import com.market.security.services.UserDetailsImpl;
 import com.market.service.MessageService;
 import com.market.service.UserService;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
-import java.util.Collections;
+import java.security.SecureRandom;
 import java.util.Date;
 import java.util.HashSet;
 import java.util.Optional;
+import java.util.Set;
 
 @Service
 public class UserServiceImpl implements UserService {
+
+    private static final SecureRandom RANDOM = new SecureRandom();
 
     private final AuthenticationManager authenticationManager;
 
@@ -42,50 +45,51 @@ public class UserServiceImpl implements UserService {
 
     private final MessageService messageService;
 
-    @Value("${app.otpExpirationMs}")
-    private int otpExpirationMs;
-    @Value("${otp.size}")
-    private double otpSize;
+    private final long otpExpirationMs;
 
-    @Autowired
-    public UserServiceImpl(AuthenticationManager authenticationManager, JwtUtils jwtUtils, PasswordEncoder passwordEncoder, UserRepository userRepository, UserOtpRepository otpRepository, MessageService messageService) {
+    private final int otpSize;
+
+    public UserServiceImpl(AuthenticationManager authenticationManager, JwtUtils jwtUtils, PasswordEncoder passwordEncoder,
+                           UserRepository userRepository, UserOtpRepository otpRepository, MessageService messageService,
+                           @Value("${app.otpExpirationMs}") long otpExpirationMs,
+                           @Value("${otp.size}") int otpSize) {
         this.authenticationManager = authenticationManager;
         this.jwtUtils = jwtUtils;
         this.passwordEncoder = passwordEncoder;
         this.userRepository = userRepository;
         this.otpRepository = otpRepository;
         this.messageService = messageService;
+        this.otpExpirationMs = otpExpirationMs;
+        this.otpSize = otpSize;
     }
 
     @Override
-    public UserResponse signup(UserResponse userResponse) {
+    @Transactional
+    public UserResponse signup(UserSignupRequest request) {
+        if (userRepository.existsByUsername(request.getUsername()))
+            throw MarketException.duplicate("Username " + request.getUsername() + " is already taken.");
 
-        if (userRepository.existsByUsername(userResponse.getUsername()))
-            throw MarketException.throwException("User - " + userResponse.getUsername() + " already exists.");
-
-        if (userRepository.existsByEmail(userResponse.getEmail()))
-            throw MarketException.throwException("User - " + userResponse.getEmail() + " already exists.");
+        if (userRepository.existsByEmail(request.getEmail()))
+            throw MarketException.duplicate("Email " + request.getEmail() + " is already registered.");
 
         User user = new User()
-                .setUsername(userResponse.getUsername())
-                .setEmail(userResponse.getEmail())
-                .setPassword(passwordEncoder.encode(userResponse.getPassword()))
-                .setFirstName(userResponse.getFirstName())
-                .setLastName(userResponse.getLastName())
-                .setMobileNumber(userResponse.getMobileNumber());
+                .setUsername(request.getUsername())
+                .setEmail(request.getEmail())
+                .setPassword(passwordEncoder.encode(request.getPassword()))
+                .setFirstName(request.getFirstName())
+                .setLastName(request.getLastName())
+                .setMobileNumber(request.getMobileNumber());
 
-        user.setUserRoles(Collections.singleton(new UserRole().setName(Role.ROLE_USER).setUser(user)));
+        user.setUserRoles(new HashSet<>(Set.of(new UserRole().setName(Role.ROLE_USER).setUser(user))));
 
-        UserOtp userOtp = new UserOtp()
-                .setUser(user)
-                .setExpiryDate(new Date((new Date()).getTime() + otpExpirationMs))
-                .setOtp(generateOTP());
+        UserOtp userOtp = newOtp(user);
+        user.setUserOtps(new HashSet<>(Set.of(userOtp)));
 
-        user.setUserOtps(new HashSet<>(Collections.singletonList(userOtp)));
+        User saved = userRepository.save(user);
+        // Sent last: if sending fails, the transaction rolls back and no half-created user is left behind.
+        sendOtp(saved, userOtp.getOtp());
 
-        sendOtp(user.getEmail(), user.getMobileNumber(), userOtp.getOtp());
-
-        return toUserResponse(userRepository.save(user));
+        return toUserResponse(saved);
     }
 
     @Override
@@ -93,9 +97,7 @@ public class UserServiceImpl implements UserService {
         Authentication authentication = authenticationManager.authenticate(
                 new UsernamePasswordAuthenticationToken(username, password));
 
-        SecurityContextHolder.getContext().setAuthentication(authentication);
         String jwt = jwtUtils.generateJwtToken(authentication);
-
         UserDetailsImpl userDetails = (UserDetailsImpl) authentication.getPrincipal();
 
         return new JwtResponse(jwt,
@@ -105,58 +107,61 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
-    public Boolean verify(Long userId, String otp) {
+    @Transactional
+    public boolean verify(Long userId, String otp) {
         Optional<UserOtp> userOtp = otpRepository.findOneByUserIdAndOtpAndExpiryDateGreaterThan(userId, otp, new Date());
 
-        if (userOtp.isPresent()) {
-            userRepository.save(userRepository.getById(userId).setVerifiedDate(new Date()));
-            otpRepository.delete(userOtp.get());
-        }
+        userOtp.ifPresent(found -> {
+            User user = found.getUser();
+            user.setVerifiedDate(new Date());
+            user.getUserOtps().remove(found);
+            otpRepository.delete(found);
+        });
         return userOtp.isPresent();
     }
 
     @Override
-    public void resendOtp(Long request) {
+    @Transactional
+    public void resendOtp(Long userId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> MarketException.notFound("User - " + userId + " does not exist."));
 
-        UserOtp otp = otpRepository.findOneByUserId(request).orElseThrow(() ->
-                MarketException.throwException("OTP for User does not exist."));
+        if (user.getVerifiedDate() != null)
+            throw MarketException.badRequest("User is already verified.");
 
-        otp.setUser(userRepository.getById(request))
-                .setExpiryDate(new Date((new Date()).getTime() + otpExpirationMs))
-                .setOtp(generateOTP());
-
-        sendOtp(otp.getUser().getEmail(), otp.getUser().getMobileNumber(), otp.getOtp());
-
+        UserOtp otp = otpRepository.findOneByUserId(userId).orElseGet(() -> newOtp(user));
+        otp.setExpiryDate(new Date(System.currentTimeMillis() + otpExpirationMs))
+                .setOtp(generateOtp());
         otpRepository.save(otp);
-    }
 
-    private String generateOTP() {
-        int otp = (int) ((Math.random() * 9 * Math.pow(10, otpSize - 1)) + (Math.pow(10, otpSize - 1)));
-        return String.valueOf(otp);
+        sendOtp(user, otp.getOtp());
     }
 
     @Override
-    public UserResponse updateProfile(UserResponse userResponse) {
-        User user = userRepository.findOneByUsername(userResponse.getUsername()).orElseThrow(() -> MarketException.throwException("User - " + userResponse.getUsername() + " does not exist."));
-        user.setFirstName(userResponse.getFirstName())
-                .setLastName(userResponse.getLastName())
-                .setMobileNumber(userResponse.getMobileNumber());
-        return toUserResponse(userRepository.save(user));
-    }
-
-    @Override
+    @Transactional
     public void changePassword(Long userId, String oldPassword, String newPassword) {
         User user = userRepository.findById(userId)
-                .orElseThrow(() -> MarketException.throwException("User - " + userId + " does not exist."));
+                .orElseThrow(() -> MarketException.notFound("User - " + userId + " does not exist."));
 
         if (!passwordEncoder.matches(oldPassword, user.getPassword()))
-            throw MarketException.throwException("The Old Password is not valid");
+            throw MarketException.badRequest("The old password is not valid.");
 
         user.setPassword(passwordEncoder.encode(newPassword));
-        toUserResponse(userRepository.save(user));
     }
 
-    public UserResponse toUserResponse(User user) {
+    private UserOtp newOtp(User user) {
+        return new UserOtp()
+                .setUser(user)
+                .setExpiryDate(new Date(System.currentTimeMillis() + otpExpirationMs))
+                .setOtp(generateOtp());
+    }
+
+    private String generateOtp() {
+        int lowerBound = (int) Math.pow(10, otpSize - 1);
+        return String.valueOf(lowerBound + RANDOM.nextInt(9 * lowerBound));
+    }
+
+    private UserResponse toUserResponse(User user) {
         return new UserResponse()
                 .setId(user.getId())
                 .setEmail(user.getEmail())
@@ -166,9 +171,9 @@ public class UserServiceImpl implements UserService {
                 .setMobileNumber(user.getMobileNumber());
     }
 
-    private void sendOtp(String email, String mobileNumber, String otp) {
-        messageService.sendEmailMessage(email, "OTP verification", "Your OTP is : " + otp);
-        messageService.sendSmsMessage(mobileNumber, "Your OTP is : " + otp);
+    private void sendOtp(User user, String otp) {
+        messageService.sendEmailMessage(user.getEmail(), "OTP verification", "Your OTP is : " + otp);
+        messageService.sendSmsMessage(user.getMobileNumber(), "Your OTP is : " + otp);
     }
 
 }

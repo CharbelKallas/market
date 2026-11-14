@@ -22,89 +22,55 @@ public class Response<T> {
     private Object errors;
     private Object metadata;
 
-    public static <T> Response<T> badRequest() {
-        Response<T> response = new Response<>();
-        response.setStatus(Status.BAD_REQUEST);
-        return response;
+    private static <T> Response<T> of(Status status) {
+        return new Response<T>().setStatus(status);
     }
 
     public static <T> Response<T> ok() {
-        Response<T> response = new Response<>();
-        response.setStatus(Status.OK);
-        return response;
+        return of(Status.OK);
+    }
+
+    public static <T> Response<T> badRequest() {
+        return of(Status.BAD_REQUEST);
     }
 
     public static <T> Response<T> unauthorized() {
-        Response<T> response = new Response<>();
-        response.setStatus(Status.UNAUTHORIZED);
-        return response;
+        return of(Status.UNAUTHORIZED);
     }
 
     public static <T> Response<T> validationException() {
-        Response<T> response = new Response<>();
-        response.setStatus(Status.VALIDATION_EXCEPTION);
-        return response;
+        return of(Status.VALIDATION_EXCEPTION);
     }
 
     public static <T> Response<T> wrongCredentials() {
-        Response<T> response = new Response<>();
-        response.setStatus(Status.WRONG_CREDENTIALS);
-        return response;
+        return of(Status.WRONG_CREDENTIALS);
     }
 
     public static <T> Response<T> accessDenied() {
-        Response<T> response = new Response<>();
-        response.setStatus(Status.ACCESS_DENIED);
-        return response;
+        return of(Status.ACCESS_DENIED);
     }
 
     public static <T> Response<T> exception() {
-        Response<T> response = new Response<>();
-        response.setStatus(Status.EXCEPTION);
-        return response;
+        return of(Status.EXCEPTION);
     }
 
     public static <T> Response<T> notFound() {
-        Response<T> response = new Response<>();
-        response.setStatus(Status.NOT_FOUND);
-        return response;
+        return of(Status.NOT_FOUND);
     }
 
     public static <T> Response<T> duplicateEntity() {
-        Response<T> response = new Response<>();
-        response.setStatus(Status.DUPLICATE_ENTITY);
-        return response;
+        return of(Status.DUPLICATE_ENTITY);
     }
 
-    public void addErrorMsgToResponse(String errorMsg, Exception ex) {
-        ResponseError error = new ResponseError()
-                .setDetails(errorMsg)
-                .setMessage(ex.getMessage())
-                .setTimestamp(new Date());
-        setErrors(error);
+    public Response<T> addError(String message, Object details) {
+        return setErrors(new ResponseError()
+                .setMessage(message)
+                .setDetails(details)
+                .setTimestamp(new Date()));
     }
 
     public enum Status {
         OK, BAD_REQUEST, UNAUTHORIZED, VALIDATION_EXCEPTION, EXCEPTION, WRONG_CREDENTIALS, ACCESS_DENIED, NOT_FOUND, DUPLICATE_ENTITY
     }
 
-    @Getter
-    @Accessors(chain = true)
-    @JsonInclude(JsonInclude.Include.NON_NULL)
-    @JsonIgnoreProperties(ignoreUnknown = true)
-    public static class PageMetadata {
-        private final int size;
-        private final long totalElements;
-        private final int totalPages;
-        private final int number;
-
-        public PageMetadata(int size, long totalElements, int totalPages, int number) {
-            this.size = size;
-            this.totalElements = totalElements;
-            this.totalPages = totalPages;
-            this.number = number;
-        }
-    }
-
 }
-
