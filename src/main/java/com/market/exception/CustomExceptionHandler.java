@@ -64,12 +64,12 @@ public class CustomExceptionHandler extends ResponseEntityExceptionHandler {
         return new ResponseEntity<>(body, HttpStatus.INTERNAL_SERVER_ERROR);
     }
 
-    /** A row lock (e.g. on the user's OTP) couldn't be taken within the DB lock timeout: another request holds it. */
+    /** A row lock couldn't be taken within the DB lock timeout, or a deadlock was broken: the client can retry. */
     @ExceptionHandler(PessimisticLockingFailureException.class)
     public ResponseEntity<Object> handleLockTimeout(PessimisticLockingFailureException ex) {
-        log.warn("Lock timeout: {}", ex.getMostSpecificCause().getMessage());
+        log.warn("Lock conflict (lock timeout or deadlock)", ex);
         Response<Object> body = new Response<>().setStatus(Response.Status.CONFLICT)
-                .addError("Another request for this account is in progress. Please retry.", null);
+                .addError("The resource is busy. Please retry.", null);
         HttpHeaders headers = new HttpHeaders();
         headers.set(HttpHeaders.RETRY_AFTER, "1");
         return new ResponseEntity<>(body, headers, HttpStatus.CONFLICT);

@@ -104,8 +104,9 @@ public class OtpService {
     }
 
     /**
-     * Sends a new code if the user exists and is still unverified. Unknown and already verified users get the same
-     * silent success, so the public endpoint doesn't reveal which accounts exist or are verified.
+     * Sends a new code if the user exists, is still unverified, and is within the cooldown and daily limits. In every
+     * other case it silently does nothing, so the public endpoint gives the same answer whether an account exists,
+     * is verified or is pending. Only a delivery failure is reported (503), since that only happens after a real send.
      */
     @Transactional
     public void resend(Long userId) {
@@ -119,13 +120,13 @@ public class OtpService {
             return;
         Date now = new Date();
         if (otp.getSentDate() != null && now.getTime() - otp.getSentDate().getTime() < RESEND_COOLDOWN_MS)
-            throw MarketException.badRequest("Please wait a minute before requesting a new OTP.");
+            return;
 
         if (otp.getResendWindowStart() == null || now.getTime() - otp.getResendWindowStart().getTime() >= DAY_MS)
             otp.setResendWindowStart(now).setResendCount(0);
         // Each resend resets the guess limit, so resends themselves must be limited.
         if (otp.getResendCount() >= MAX_RESENDS_PER_DAY)
-            throw MarketException.badRequest("Too many OTP requests. Please try again tomorrow.");
+            return;
 
         // Kept so a resend that reaches nobody can be undone completely, guess counter included.
         Snapshot before = new Snapshot(otp);

@@ -9,6 +9,7 @@ import com.market.repository.UserOtpRepository;
 import com.market.repository.UserRepository;
 import com.market.service.LoginAttemptService;
 import com.market.service.MessageService;
+import com.market.service.SignupRateLimiter;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -166,10 +167,12 @@ class MarketApplicationTests {
                         .content(json(Map.of("userId", userId, "otp", otp))))
                 .andExpect(status().isBadRequest());
 
-        // A resend right after sign-up is refused by the cooldown.
+        // A resend right after sign-up is held back by the cooldown: same generic answer, no new code.
+        String lockedCode = otpRepository.findOneByUserId(userId).orElseThrow().getOtp();
         mvc.perform(post("/api/user/resend_otp").contentType(MediaType.APPLICATION_JSON)
                         .content(json(Map.of("userId", userId))))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isOk());
+        assertThat(otpRepository.findOneByUserId(userId).orElseThrow().getOtp()).isEqualTo(lockedCode);
     }
 
     @Test
@@ -334,11 +337,12 @@ class MarketApplicationTests {
                         .content(json(Map.of("userId", userId))))
                 .andExpect(status().isOk());
 
-        // The cooldown applies, so the inbox can't be flooded.
+        // The cooldown applies, so the inbox can't be flooded: the next resend sends nothing.
         assertThat(otpRepository.findOneByUserId(userId).orElseThrow().getResendCount()).isEqualTo(1);
         mvc.perform(post("/api/user/resend_otp").contentType(MediaType.APPLICATION_JSON)
                         .content(json(Map.of("userId", userId))))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isOk());
+        assertThat(otpRepository.findOneByUserId(userId).orElseThrow().getResendCount()).isEqualTo(1);
     }
 
     @Test
@@ -389,7 +393,8 @@ class MarketApplicationTests {
 
     @Test
     void resendAnswersTheSameForUnknownAndVerifiedUsers() throws Exception {
-        String generic = "If the account is pending verification, a new code was sent.";
+        String generic = "If the account is pending verification, a new code was sent. Codes can be requested once a "
+                + "minute, up to 5 times a day.";
         mvc.perform(post("/api/user/resend_otp").contentType(MediaType.APPLICATION_JSON)
                         .content(json(Map.of("userId", 987654321))))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.payload").value(generic));
@@ -545,10 +550,25 @@ class MarketApplicationTests {
 
         otp = otpRepository.findOneByUserId(userId).orElseThrow();
         otpRepository.save(otp.setSentDate(past).setResendCount(5));
+        String codeAtCap = otp.getOtp();
         mvc.perform(post("/api/user/resend_otp").contentType(MediaType.APPLICATION_JSON)
                         .content(json(Map.of("userId", userId))))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.errors.message").value("Too many OTP requests. Please try again tomorrow."));
+                .andExpect(status().isOk());
+        // Over the daily cap nothing is sent or changed, but the answer is the same as for any other id.
+        var after = otpRepository.findOneByUserId(userId).orElseThrow();
+        assertThat(after.getResendCount()).isEqualTo(5);
+        assertThat(after.getOtp()).isEqualTo(codeAtCap);
+    }
+
+    @Test
+    void signupIsRateLimitedPerClient() {
+        SignupRateLimiter limiter = new SignupRateLimiter(3);
+        for (int i = 0; i < 3; i++)
+            limiter.acquire("10.0.0.5");
+        assertThatThrownBy(() -> limiter.acquire("10.0.0.5"))
+                .isInstanceOf(MarketException.class)
+                .satisfies(e -> assertThat(((MarketException) e).getRetryAfterSeconds()).isPositive());
+        limiter.acquire("10.0.0.6");
     }
 
     @Test

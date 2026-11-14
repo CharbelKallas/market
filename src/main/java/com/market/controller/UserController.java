@@ -7,6 +7,7 @@ import com.market.payload.response.JwtResponse;
 import com.market.payload.response.UserResponse;
 import com.market.security.services.UserDetailsImpl;
 import com.market.service.OtpService;
+import com.market.service.SignupRateLimiter;
 import com.market.service.UserService;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -26,13 +27,17 @@ public class UserController {
 
     private final OtpService otpService;
 
-    public UserController(UserService userService, OtpService otpService) {
+    private final SignupRateLimiter signupRateLimiter;
+
+    public UserController(UserService userService, OtpService otpService, SignupRateLimiter signupRateLimiter) {
         this.userService = userService;
         this.otpService = otpService;
+        this.signupRateLimiter = signupRateLimiter;
     }
 
     @PostMapping("/signup")
-    public Response<UserResponse> signup(@RequestBody @Valid UserSignupRequest request) {
+    public Response<UserResponse> signup(@RequestBody @Valid UserSignupRequest request, HttpServletRequest httpRequest) {
+        signupRateLimiter.acquire(httpRequest.getRemoteAddr());
         return Response.<UserResponse>ok().setPayload(userService.signup(request));
     }
 
@@ -52,7 +57,8 @@ public class UserController {
     @PostMapping("/resend_otp")
     public Response<String> resendOtp(@RequestBody @Valid ResendOtpRequest request) {
         otpService.resend(request.getUserId());
-        return Response.<String>ok().setPayload("If the account is pending verification, a new code was sent.");
+        return Response.<String>ok().setPayload("If the account is pending verification, a new code was sent. Codes can be requested once a minute, "
+                + "up to 5 times a day.");
     }
 
     /** Changes the signed-in user's password and returns a new token (older tokens stop working). */
