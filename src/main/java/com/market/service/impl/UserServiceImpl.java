@@ -14,6 +14,8 @@ import com.market.security.jwt.JwtUtils;
 import com.market.security.services.UserDetailsImpl;
 import com.market.service.MessageService;
 import com.market.service.UserService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.DisabledException;
@@ -35,6 +37,8 @@ import java.util.Set;
 
 @Service
 public class UserServiceImpl implements UserService {
+
+    private static final Logger log = LoggerFactory.getLogger(UserServiceImpl.class);
 
     private static final SecureRandom RANDOM = new SecureRandom();
 
@@ -79,17 +83,20 @@ public class UserServiceImpl implements UserService {
     @Override
     @Transactional
     public UserResponse signup(UserSignupRequest request) {
-        Optional<User> sameUsername = userRepository.findOneByUsername(request.getUsername());
-        if (sameUsername.isPresent())
-            releaseIfAbandoned(sameUsername.get(), "Username " + request.getUsername() + " is already taken.");
+        String username = User.normalizeIdentifier(request.getUsername());
+        String email = User.normalizeIdentifier(request.getEmail());
 
-        Optional<User> sameEmail = userRepository.findOneByEmail(request.getEmail());
+        Optional<User> sameUsername = userRepository.findOneByUsername(username);
+        if (sameUsername.isPresent())
+            releaseIfAbandoned(sameUsername.get(), "Username " + username + " is already taken.");
+
+        Optional<User> sameEmail = userRepository.findOneByEmail(email);
         if (sameEmail.isPresent())
-            releaseIfAbandoned(sameEmail.get(), "Email " + request.getEmail() + " is already registered.");
+            releaseIfAbandoned(sameEmail.get(), "Email " + email + " is already registered.");
 
         User user = new User()
-                .setUsername(request.getUsername())
-                .setEmail(request.getEmail())
+                .setUsername(username)
+                .setEmail(email)
                 .setPassword(passwordEncoder.encode(request.getPassword()))
                 .setFirstName(request.getFirstName())
                 .setLastName(request.getLastName())
@@ -109,7 +116,7 @@ public class UserServiceImpl implements UserService {
     @Override
     public JwtResponse signin(String username, String password) {
         Authentication authentication = authenticationManager.authenticate(
-                new UsernamePasswordAuthenticationToken(username, password));
+                new UsernamePasswordAuthenticationToken(User.normalizeIdentifier(username), password));
 
         UserDetailsImpl userDetails = (UserDetailsImpl) authentication.getPrincipal();
         // Checked only after the password matched, so it doesn't reveal which usernames exist.
@@ -236,16 +243,26 @@ public class UserServiceImpl implements UserService {
 
     /**
      * Sends the OTP only once the transaction has committed, so no DB connection is held during the SMTP/SMS call
-     * and nobody receives a code for an account that was rolled back. If sending fails, the user can resend.
+     * and nobody receives a code for an account that was rolled back. The data is already saved by then, so a send
+     * failure is logged rather than turned into an error response; the user can request a new code.
      */
     private void sendOtpAfterCommit(User user, String otp) {
         String email = user.getEmail();
         String mobileNumber = user.getMobileNumber();
+        Long userId = user.getId();
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             @Override
             public void afterCommit() {
-                messageService.sendEmailMessage(email, "OTP verification", "Your OTP is : " + otp);
-                messageService.sendSmsMessage(mobileNumber, "Your OTP is : " + otp);
+                try {
+                    messageService.sendEmailMessage(email, "OTP verification", "Your OTP is : " + otp);
+                } catch (RuntimeException e) {
+                    log.error("Could not send the OTP email to user {}", userId, e);
+                }
+                try {
+                    messageService.sendSmsMessage(mobileNumber, "Your OTP is : " + otp);
+                } catch (RuntimeException e) {
+                    log.error("Could not send the OTP SMS to user {}", userId, e);
+                }
             }
         });
     }

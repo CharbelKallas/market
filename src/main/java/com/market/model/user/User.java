@@ -8,6 +8,7 @@ import lombok.experimental.Accessors;
 
 import javax.persistence.*;
 import java.util.Date;
+import java.util.Locale;
 import java.util.Set;
 
 @Getter
@@ -55,5 +56,12 @@ public class User {
 
     @OneToMany(mappedBy = "user", cascade = CascadeType.ALL)
     private Set<UserRole> userRoles;
+
+    /**
+     * Usernames and emails are stored trimmed and lower-case, so "Bob@x.com" and "bob@x.com" are the same account.
+     */
+    public static String normalizeIdentifier(String value) {
+        return value == null ? null : value.trim().toLowerCase(Locale.ROOT);
+    }
 
 }

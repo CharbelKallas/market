@@ -17,6 +17,7 @@ import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import javax.validation.Valid;
+import java.nio.charset.StandardCharsets;
 import javax.validation.constraints.Max;
 import javax.validation.constraints.Min;
 
@@ -52,7 +53,7 @@ public class ItemController {
 
         String filename = image.getImageName() != null ? image.getImageName() : "item-" + itemId;
         return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.inline().filename(filename).build().toString())
+                .header(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.inline().filename(filename, StandardCharsets.UTF_8).build().toString())
                 .header("X-Content-Type-Options", "nosniff")
                 .contentType(MediaType.parseMediaType(image.getContentType()))
                 .body(image.getData());

@@ -1,11 +1,10 @@
 package com.market.security.jwt;
 
+import com.market.repository.UserRepository;
 import com.market.security.services.UserDetailsImpl;
 import io.jsonwebtoken.Claims;
-import com.market.security.services.UserDetailsServiceImpl;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -16,17 +15,23 @@ import javax.servlet.ServletException;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import java.io.IOException;
+import java.util.Objects;
 
+/**
+ * Authenticates requests from the JWT. The token carries the user id and roles, so each request needs only one
+ * small query: the user's current token version, which rejects tokens issued before the last password change.
+ * Tokens are only ever issued to verified users. Any future change to a user's roles must bump the token version.
+ */
 @Component
 public class AuthTokenFilter extends OncePerRequestFilter {
 
     private final JwtUtils jwtUtils;
 
-    private final UserDetailsServiceImpl userDetailsService;
+    private final UserRepository userRepository;
 
-    public AuthTokenFilter(JwtUtils jwtUtils, UserDetailsServiceImpl userDetailsService) {
+    public AuthTokenFilter(JwtUtils jwtUtils, UserRepository userRepository) {
         this.jwtUtils = jwtUtils;
-        this.userDetailsService = userDetailsService;
+        this.userRepository = userRepository;
     }
 
     @Override
@@ -34,20 +39,17 @@ public class AuthTokenFilter extends OncePerRequestFilter {
             throws ServletException, IOException {
         String jwt = parseJwt(request);
         Claims claims = jwt == null ? null : jwtUtils.parseValidToken(jwt);
+        Long userId = claims == null ? null : JwtUtils.userId(claims);
 
-        if (claims != null) {
-            String username = claims.getSubject();
-            try {
-                UserDetailsImpl userDetails = (UserDetailsImpl) userDetailsService.loadUserByUsername(username);
-                // A token from before the last password change has an older version and is rejected.
-                if (userDetails.isVerified() && JwtUtils.tokenVersion(claims) == userDetails.getTokenVersion()) {
-                    UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
-                            userDetails, null, userDetails.getAuthorities());
-                    authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-                    SecurityContextHolder.getContext().setAuthentication(authentication);
-                }
-            } catch (UsernameNotFoundException e) {
-                logger.debug("JWT refers to a user that no longer exists: " + username);
+        if (userId != null) {
+            Integer currentVersion = userRepository.findTokenVersionById(userId).orElse(null);
+            if (Objects.equals(currentVersion, JwtUtils.tokenVersion(claims))) {
+                UserDetailsImpl principal = new UserDetailsImpl(userId, claims.getSubject(), null, null, true,
+                        currentVersion, JwtUtils.authorities(claims));
+                UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
+                        principal, null, principal.getAuthorities());
+                authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+                SecurityContextHolder.getContext().setAuthentication(authentication);
             }
         }
 

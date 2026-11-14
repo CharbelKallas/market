@@ -48,6 +48,10 @@ An OTP stops working after 5 wrong guesses. A new one can be requested at most o
 
 Changing the password signs out every existing session (older tokens stop working).
 
+Usernames and emails are case-insensitive (stored lower-case). Item names are unique regardless of case.
+
+`ADMIN_PASSWORD` is re-applied on every start: changing it updates the existing admin and signs out its sessions.
+
 ### Upgrading an existing database
 
 `DDL_AUTO=update` adds new tables and columns but never changes or drops existing ones. A database created by an older version of this app (before item images moved to their own `item_image` table, prices became `numeric`, and order coordinates became numbers) must be dropped and recreated once, for example by running with `DDL_AUTO=create` one time. Older versions recreated the schema on every start, so there is no data worth keeping in it.

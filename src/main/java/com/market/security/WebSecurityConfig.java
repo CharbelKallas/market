@@ -1,5 +1,6 @@
 package com.market.security;
 
+import com.market.security.jwt.AccessDeniedHandlerJwt;
 import com.market.security.jwt.AuthEntryPointJwt;
 import com.market.security.jwt.AuthTokenFilter;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
@@ -37,10 +38,12 @@ public class WebSecurityConfig {
 
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http, AuthEntryPointJwt unauthorizedHandler,
+                                           AccessDeniedHandlerJwt accessDeniedHandler,
                                            AuthTokenFilter authTokenFilter) throws Exception {
         http.cors().configurationSource(request -> new CorsConfiguration().applyPermitDefaultValues())
                 .and().csrf().disable()
-                .exceptionHandling().authenticationEntryPoint(unauthorizedHandler).and()
+                .exceptionHandling().authenticationEntryPoint(unauthorizedHandler)
+                .accessDeniedHandler(accessDeniedHandler).and()
                 .sessionManagement().sessionCreationPolicy(SessionCreationPolicy.STATELESS).and()
                 .authorizeRequests()
                 .antMatchers(PUBLIC_PATHS).permitAll()

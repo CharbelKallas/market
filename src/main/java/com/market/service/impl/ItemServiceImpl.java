@@ -29,8 +29,9 @@ public class ItemServiceImpl implements ItemService {
     @Override
     @Transactional
     public ItemResponse save(NewItemRequest itemRequest) {
-        String itemName = itemRequest.getItemName().trim();
-        if (itemRepository.existsByItemName(itemName))
+        // "Apple", " apple" and "APPLE" are the same item; inner runs of spaces collapse to one.
+        String itemName = itemRequest.getItemName().trim().replaceAll("\\s+", " ");
+        if (itemRepository.existsByItemNameIgnoreCase(itemName))
             throw MarketException.duplicate("Item - " + itemName + " already exists.");
 
         Item item = new Item().setItemName(itemName);

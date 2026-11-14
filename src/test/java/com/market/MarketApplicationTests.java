@@ -2,7 +2,10 @@ package com.market;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.market.config.AdminInitializer;
+import com.market.exception.CustomExceptionHandler;
 import com.market.repository.UserOtpRepository;
+import com.market.repository.UserRepository;
 import com.market.service.MessageService;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -10,11 +13,18 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.transaction.support.TransactionTemplate;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
+
+import java.sql.SQLException;
 
 import java.util.Date;
 import java.util.Map;
@@ -23,6 +33,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -46,6 +57,15 @@ class MarketApplicationTests {
     @Autowired
     private UserOtpRepository otpRepository;
 
+    @Autowired
+    private UserRepository userRepository;
+
+    @Autowired
+    private PasswordEncoder passwordEncoder;
+
+    @Autowired
+    private TransactionTemplate transactionTemplate;
+
     @Test
     void fullFlow_signupVerifySigninAndPlaceOrder() throws Exception {
         long userId = signup("alice", "alice@example.com");
@@ -66,7 +86,8 @@ class MarketApplicationTests {
         MockMultipartFile image = new MockMultipartFile("image", "apple.png", "image/png", PNG);
         mvc.perform(multipart("/api/item/new").file(image).param("itemName", "Apple").param("amount", "1.50")
                         .header("Authorization", "Bearer " + userToken))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.status").value("ACCESS_DENIED"));
 
         String adminToken = signin("admin", "admin-password");
         JsonNode item = body(mvc.perform(multipart("/api/item/new").file(image)
@@ -75,6 +96,11 @@ class MarketApplicationTests {
                 .andExpect(status().isOk()).andReturn()).path("payload");
         long itemId = item.path("id").asLong();
         assertThat(itemId).isPositive();
+
+        // Item names are unique regardless of case and extra spaces.
+        mvc.perform(multipart("/api/item/new").param("itemName", "  APPLE ").param("amount", "2")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isConflict());
 
         mvc.perform(get("/api/item/all").header("Authorization", "Bearer " + userToken))
                 .andExpect(status().isOk())
@@ -165,6 +191,60 @@ class MarketApplicationTests {
         // Tokens issued before the change no longer work.
         mvc.perform(get("/api/item/all").header("Authorization", "Bearer " + token))
                 .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void usernamesAndEmailsIgnoreCase() throws Exception {
+        long userId = signup("Ivy", "Ivy@Example.com");
+        mvc.perform(post("/api/user/signup").contentType(MediaType.APPLICATION_JSON)
+                        .content(json(signupBody("ivy2", "ivy@example.com"))))
+                .andExpect(status().isConflict());
+        mvc.perform(post("/api/user/signup").contentType(MediaType.APPLICATION_JSON)
+                        .content(json(signupBody("IVY", "other-ivy@example.com"))))
+                .andExpect(status().isConflict());
+
+        verifyUser(userId, "ivy@example.com");
+        signin("IVY", "password123");
+    }
+
+    @Test
+    void signupSucceedsEvenIfTheOtpEmailFails() throws Exception {
+        doThrow(new RuntimeException("SMTP down")).when(messageService)
+                .sendEmailMessage(eq("jack@example.com"), anyString(), anyString());
+        long userId = signup("jack", "jack@example.com");
+        assertThat(userId).isPositive();
+    }
+
+    @Test
+    void adminPasswordFromEnvironmentIsAppliedOnRestart() throws Exception {
+        String oldToken = signin("admin", "admin-password");
+
+        runAdminInitializer("admin", "rotated-password", "");
+        signin("admin", "rotated-password");
+        mvc.perform(get("/api/item/all").header("Authorization", "Bearer " + oldToken))
+                .andExpect(status().isUnauthorized());
+
+        runAdminInitializer("admin", "admin-password", "");
+        signin("admin", "admin-password");
+    }
+
+    @Test
+    void adminEmailAlreadyInUseDoesNotBreakStartup() throws Exception {
+        signup("kate", "kate@example.com");
+        runAdminInitializer("second-admin", "second-admin-password", "kate@example.com");
+        assertThat(userRepository.findOneByUsername("second-admin")).get()
+                .satisfies(admin -> assertThat(admin.getEmail()).isNull());
+    }
+
+    @Test
+    void exceptionHandlerMapsDatabaseAndUploadErrors() {
+        CustomExceptionHandler handler = new CustomExceptionHandler();
+        assertThat(handler.handleDataIntegrityViolation(new DataIntegrityViolationException("dup",
+                new SQLException("duplicate key", "23505"))).getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat(handler.handleDataIntegrityViolation(new DataIntegrityViolationException("null",
+                new SQLException("null value", "23502"))).getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
+        assertThat(handler.handleMaxUploadSize(new MaxUploadSizeExceededException(5))
+                .getStatusCode()).isEqualTo(HttpStatus.PAYLOAD_TOO_LARGE);
     }
 
     @Test
@@ -277,6 +357,11 @@ class MarketApplicationTests {
         mvc.perform(post("/api/user/verify").contentType(MediaType.APPLICATION_JSON)
                         .content(json(Map.of("userId", userId, "otp", otp))))
                 .andExpect(status().isOk());
+    }
+
+    private void runAdminInitializer(String username, String password, String email) {
+        AdminInitializer initializer = new AdminInitializer(userRepository, passwordEncoder, username, password, email);
+        transactionTemplate.executeWithoutResult(status -> initializer.run(null));
     }
 
     private String signin(String username, String password) throws Exception {

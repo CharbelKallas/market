@@ -44,9 +44,9 @@ public class AdminInitializer implements ApplicationRunner {
                             @Value("${app.admin.email:}") String email) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
-        this.username = username;
+        this.username = User.normalizeIdentifier(username);
         this.password = password;
-        this.email = email;
+        this.email = User.normalizeIdentifier(email);
     }
 
     @Override
@@ -57,17 +57,31 @@ public class AdminInitializer implements ApplicationRunner {
 
         Optional<User> existing = userRepository.findOneByUsername(username);
         if (existing.isPresent()) {
-            boolean isAdmin = existing.get().getUserRoles().stream().anyMatch(role -> role.getName() == Role.ROLE_ADMIN);
-            if (!isAdmin)
+            User user = existing.get();
+            boolean isAdmin = user.getUserRoles().stream().anyMatch(role -> role.getName() == Role.ROLE_ADMIN);
+            if (!isAdmin) {
                 log.warn("ADMIN_USERNAME '{}' belongs to an existing non-admin user, so no admin was created. "
                         + "Choose another ADMIN_USERNAME.", username);
+            } else if (!passwordEncoder.matches(password, user.getPassword())) {
+                // ADMIN_PASSWORD was changed (for example after a leak): apply it and sign out old sessions.
+                user.setPassword(passwordEncoder.encode(password))
+                        .setTokenVersion(user.getTokenVersion() + 1);
+                log.info("Updated the password of admin user '{}' from ADMIN_PASSWORD", username);
+            }
             return;
+        }
+
+        String adminEmail = StringUtils.hasText(email) ? email : null;
+        if (adminEmail != null && userRepository.findOneByEmail(adminEmail).isPresent()) {
+            log.warn("ADMIN_EMAIL '{}' already belongs to another user; creating admin '{}' without an email.",
+                    adminEmail, username);
+            adminEmail = null;
         }
 
         User admin = new User()
                 .setUsername(username)
                 .setPassword(passwordEncoder.encode(password))
-                .setEmail(StringUtils.hasText(email) ? email : null)
+                .setEmail(adminEmail)
                 .setFirstName("Admin")
                 .setLastName("Admin")
                 .setVerifiedDate(new Date());

@@ -38,6 +38,10 @@ public class Response<T> {
         return of(Status.VALIDATION_EXCEPTION);
     }
 
+    public static <T> Response<T> accessDenied() {
+        return of(Status.ACCESS_DENIED);
+    }
+
     public static <T> Response<T> wrongCredentials() {
         return of(Status.WRONG_CREDENTIALS);
     }
