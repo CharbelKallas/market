@@ -40,7 +40,8 @@ public class UntrustedProxyDetector extends OncePerRequestFilter {
         this(WARN_INTERVAL_MS);
     }
 
-    public UntrustedProxyDetector(long warnIntervalMs) {
+    /** For tests: a custom interval between repeated warnings. */
+    UntrustedProxyDetector(long warnIntervalMs) {
         this.warnIntervalMs = warnIntervalMs;
     }
 
