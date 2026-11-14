@@ -1,7 +1,6 @@
 package com.market.controller;
 
-import com.market.exception.MarketException;
-import com.market.model.item.Item;
+import com.market.model.item.ItemImage;
 import com.market.payload.Response;
 import com.market.payload.request.NewItemRequest;
 import com.market.payload.response.ItemResponse;
@@ -49,15 +48,14 @@ public class ItemController {
     @GetMapping("/image")
     @PreAuthorize("hasAnyRole('USER', 'ADMIN')")
     public ResponseEntity<byte[]> getImage(@RequestParam Long itemId) {
-        Item item = itemService.getItem(itemId);
-        if (!item.hasImage())
-            throw MarketException.notFound("Item " + itemId + " has no image.");
+        ItemImage image = itemService.getImage(itemId);
 
-        String filename = item.getImageName() != null ? item.getImageName() : "item-" + itemId;
+        String filename = image.getImageName() != null ? image.getImageName() : "item-" + itemId;
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.inline().filename(filename).build().toString())
-                .contentType(MediaType.parseMediaType(item.getContentType()))
-                .body(item.getImage());
+                .header("X-Content-Type-Options", "nosniff")
+                .contentType(MediaType.parseMediaType(image.getContentType()))
+                .body(image.getData());
     }
 
 }

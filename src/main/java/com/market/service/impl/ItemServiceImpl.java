@@ -3,10 +3,12 @@ package com.market.service.impl;
 import com.market.exception.MarketException;
 import com.market.model.item.Item;
 import com.market.model.item.ItemAmount;
+import com.market.model.item.ItemImage;
 import com.market.payload.request.NewItemRequest;
 import com.market.payload.response.ItemResponse;
 import com.market.repository.ItemRepository;
 import com.market.service.ItemService;
+import org.hibernate.Hibernate;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -35,16 +37,21 @@ public class ItemServiceImpl implements ItemService {
 
         MultipartFile image = itemRequest.getImage();
         if (image != null && !image.isEmpty()) {
-            String contentType = image.getContentType();
-            if (contentType == null || !contentType.startsWith("image/"))
-                throw MarketException.badRequest("The uploaded file must be an image.");
+            byte[] data;
             try {
-                item.setImage(image.getBytes())
-                        .setContentType(contentType)
-                        .setImageName(image.getOriginalFilename());
+                data = image.getBytes();
             } catch (IOException e) {
                 throw MarketException.internal("Could not read the uploaded image.", e);
             }
+            // The type comes from the file's own bytes, never from the client, and only raster formats are allowed
+            // (an SVG could carry script).
+            String contentType = detectRasterImageType(data);
+            if (contentType == null)
+                throw MarketException.badRequest("The image must be a PNG, JPEG, GIF or WebP file.");
+            item.setImage(new ItemImage()
+                    .setData(data)
+                    .setContentType(contentType)
+                    .setImageName(image.getOriginalFilename()));
         }
 
         item.getItemAmounts().add(new ItemAmount().setItem(item).setAmount(itemRequest.getAmount()));
@@ -60,9 +67,33 @@ public class ItemServiceImpl implements ItemService {
 
     @Override
     @Transactional(readOnly = true)
-    public Item getItem(Long itemId) {
-        return itemRepository.findById(itemId)
+    public ItemImage getImage(Long itemId) {
+        Item item = itemRepository.findById(itemId)
                 .orElseThrow(() -> MarketException.notFound("Item " + itemId + " not found."));
+        if (!item.hasImage())
+            throw MarketException.notFound("Item " + itemId + " has no image.");
+        return (ItemImage) Hibernate.unproxy(item.getImage());
+    }
+
+    static String detectRasterImageType(byte[] d) {
+        if (startsWith(d, 0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A))
+            return "image/png";
+        if (startsWith(d, 0xFF, 0xD8, 0xFF))
+            return "image/jpeg";
+        if (startsWith(d, 'G', 'I', 'F', '8'))
+            return "image/gif";
+        if (startsWith(d, 'R', 'I', 'F', 'F') && d.length >= 12 && d[8] == 'W' && d[9] == 'E' && d[10] == 'B' && d[11] == 'P')
+            return "image/webp";
+        return null;
+    }
+
+    private static boolean startsWith(byte[] data, int... prefix) {
+        if (data.length < prefix.length)
+            return false;
+        for (int i = 0; i < prefix.length; i++)
+            if ((data[i] & 0xFF) != prefix[i])
+                return false;
+        return true;
     }
 
     private ItemResponse toItemResponse(Item item) {

@@ -4,6 +4,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import lombok.experimental.Accessors;
+import org.hibernate.annotations.BatchSize;
 
 import javax.persistence.*;
 import java.time.LocalDateTime;
@@ -28,17 +29,13 @@ public class Item {
     @Column(name = "item_name", nullable = false, unique = true)
     private String itemName;
 
-    // bytea, not @Lob: on PostgreSQL @Lob maps to a large-object OID that can't be read outside a transaction.
-    @Column(name = "image", columnDefinition = "bytea")
-    private byte[] image;
-
-    @Column(name = "image_name")
-    private String imageName;
-
-    @Column(name = "content_type")
-    private String contentType;
+    /** Lazy: the FK lives on this side, so a proxy stands in and image bytes load only when read. */
+    @OneToOne(fetch = FetchType.LAZY, cascade = CascadeType.ALL, orphanRemoval = true)
+    @JoinColumn(name = "item_image_id")
+    private ItemImage image;
 
     @OneToMany(mappedBy = "item", cascade = CascadeType.ALL)
+    @BatchSize(size = 100)
     private Set<ItemAmount> itemAmounts = new HashSet<>();
 
     /**
@@ -52,6 +49,6 @@ public class Item {
     }
 
     public boolean hasImage() {
-        return image != null && image.length > 0;
+        return image != null;
     }
 }

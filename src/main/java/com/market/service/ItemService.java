@@ -1,6 +1,6 @@
 package com.market.service;
 
-import com.market.model.item.Item;
+import com.market.model.item.ItemImage;
 import com.market.payload.request.NewItemRequest;
 import com.market.payload.response.ItemResponse;
 import org.springframework.data.domain.Page;
@@ -11,5 +11,5 @@ public interface ItemService {
 
     Page<ItemResponse> getAll(Pageable pageable);
 
-    Item getItem(Long itemId);
+    ItemImage getImage(Long itemId);
 }

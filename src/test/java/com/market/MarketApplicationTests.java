@@ -36,6 +36,8 @@ class MarketApplicationTests {
     @Autowired
     private ObjectMapper objectMapper;
 
+    private static final byte[] PNG = {(byte) 0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A, 0, 0};
+
     @MockBean
     private MessageService messageService;
 
@@ -56,7 +58,7 @@ class MarketApplicationTests {
         String userToken = signin("alice", "password123");
 
         // Only admins can add items; the bootstrapped admin can.
-        MockMultipartFile image = new MockMultipartFile("image", "apple.png", "image/png", new byte[]{1, 2, 3});
+        MockMultipartFile image = new MockMultipartFile("image", "apple.png", "image/png", PNG);
         mvc.perform(multipart("/api/item/new").file(image).param("itemName", "Apple").param("amount", "1.50")
                         .header("Authorization", "Bearer " + userToken))
                 .andExpect(status().isForbidden());
@@ -79,7 +81,8 @@ class MarketApplicationTests {
                         .header("Authorization", "Bearer " + userToken))
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(MediaType.IMAGE_PNG))
-                .andExpect(content().bytes(new byte[]{1, 2, 3}));
+                .andExpect(header().string("X-Content-Type-Options", "nosniff"))
+                .andExpect(content().bytes(PNG));
 
         Map<String, Object> order = Map.of(
                 "locationLatitude", 33.89, "locationLongitude", 35.50,
@@ -91,6 +94,49 @@ class MarketApplicationTests {
                 .andExpect(jsonPath("$.payload.orderItems[0].amount").value(4.5))
                 .andExpect(jsonPath("$.payload.deliveryCharge").value(2.0))
                 .andExpect(jsonPath("$.payload.total").value(6.5));
+    }
+
+    @Test
+    void imageUploadRejectsNonRasterFiles() throws Exception {
+        String adminToken = signin("admin", "admin-password");
+        MockMultipartFile svg = new MockMultipartFile("image", "x.svg", "image/png",
+                "<svg xmlns=\"http://www.w3.org/2000/svg\"><script>alert(1)</script></svg>".getBytes());
+        mvc.perform(multipart("/api/item/new").file(svg).param("itemName", "Evil").param("amount", "1")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void otpStopsWorkingAfterTooManyWrongGuesses() throws Exception {
+        long userId = signup("dave", "dave@example.com");
+        String otp = capturedOtp("dave@example.com");
+
+        for (int i = 0; i < 5; i++)
+            mvc.perform(post("/api/user/verify").contentType(MediaType.APPLICATION_JSON)
+                            .content(json(Map.of("userId", userId, "otp", "wrong"))))
+                    .andExpect(status().isBadRequest());
+
+        mvc.perform(post("/api/user/verify").contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of("userId", userId, "otp", otp))))
+                .andExpect(status().isBadRequest());
+
+        // A resend right after sign-up is refused by the cooldown.
+        mvc.perform(post("/api/user/resend_otp").contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of("userId", userId))))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void signinDoesNotRevealUnverifiedAccountsWithoutThePassword() throws Exception {
+        signup("erin", "erin@example.com");
+        mvc.perform(post("/api/user/signin").contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of("username", "erin", "password", "wrong-password"))))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.errors.message").value("Wrong username or password"));
+        mvc.perform(post("/api/user/signin").contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of("username", "erin", "password", "password123"))))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.errors.message").value("Account is not verified yet"));
     }
 
     @Test
@@ -160,10 +206,14 @@ class MarketApplicationTests {
         return body(result).path("payload").path("id").asLong();
     }
 
-    private void verifyUser(long userId, String email) throws Exception {
+    private String capturedOtp(String email) {
         ArgumentCaptor<String> text = ArgumentCaptor.forClass(String.class);
         verify(messageService, atLeastOnce()).sendEmailMessage(eq(email), anyString(), text.capture());
-        String otp = text.getValue().replaceAll("\\D", "");
+        return text.getValue().replaceAll("\\D", "");
+    }
+
+    private void verifyUser(long userId, String email) throws Exception {
+        String otp = capturedOtp(email);
 
         mvc.perform(post("/api/user/verify").contentType(MediaType.APPLICATION_JSON)
                         .content(json(Map.of("userId", userId, "otp", otp))))

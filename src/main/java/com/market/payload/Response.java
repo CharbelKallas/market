@@ -30,10 +30,6 @@ public class Response<T> {
         return of(Status.OK);
     }
 
-    public static <T> Response<T> badRequest() {
-        return of(Status.BAD_REQUEST);
-    }
-
     public static <T> Response<T> unauthorized() {
         return of(Status.UNAUTHORIZED);
     }
@@ -44,22 +40,6 @@ public class Response<T> {
 
     public static <T> Response<T> wrongCredentials() {
         return of(Status.WRONG_CREDENTIALS);
-    }
-
-    public static <T> Response<T> accessDenied() {
-        return of(Status.ACCESS_DENIED);
-    }
-
-    public static <T> Response<T> exception() {
-        return of(Status.EXCEPTION);
-    }
-
-    public static <T> Response<T> notFound() {
-        return of(Status.NOT_FOUND);
-    }
-
-    public static <T> Response<T> duplicateEntity() {
-        return of(Status.DUPLICATE_ENTITY);
     }
 
     public Response<T> addError(String message, Object details) {

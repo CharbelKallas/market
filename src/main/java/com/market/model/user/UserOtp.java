@@ -26,6 +26,13 @@ public class UserOtp {
     @Column(name = "expiry_date")
     private Date expiryDate;
 
+    @Column(name = "sent_date")
+    private Date sentDate;
+
+    /** Wrong guesses against this OTP; it stops working once the limit is reached. */
+    @Column(name = "failed_attempts", nullable = false)
+    private int failedAttempts;
+
     @ManyToOne
     @JoinColumn(name = "user_id")
     private User user;

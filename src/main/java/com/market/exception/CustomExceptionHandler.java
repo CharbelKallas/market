@@ -3,6 +3,7 @@ package com.market.exception;
 import com.market.payload.Response;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -34,6 +35,15 @@ public class CustomExceptionHandler extends ResponseEntityExceptionHandler {
             log.error(ex.getMessage(), ex);
         Response<Object> body = new Response<>().setStatus(ex.getStatus()).addError(ex.getMessage(), null);
         return new ResponseEntity<>(body, ex.getHttpStatus());
+    }
+
+    /** Unique-constraint races that slip past the service's exists checks. */
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<Object> handleDataIntegrityViolation(DataIntegrityViolationException ex) {
+        log.warn("Data integrity violation: {}", ex.getMostSpecificCause().getMessage());
+        Response<Object> body = new Response<>().setStatus(Response.Status.DUPLICATE_ENTITY)
+                .addError("The record conflicts with existing data.", null);
+        return new ResponseEntity<>(body, HttpStatus.CONFLICT);
     }
 
     @ExceptionHandler(AuthenticationException.class)

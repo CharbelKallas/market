@@ -16,12 +16,15 @@ import com.market.service.MessageService;
 import com.market.service.UserService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.DisabledException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.util.Date;
 import java.util.HashSet;
@@ -32,6 +35,10 @@ import java.util.Set;
 public class UserServiceImpl implements UserService {
 
     private static final SecureRandom RANDOM = new SecureRandom();
+
+    static final int MAX_OTP_ATTEMPTS = 5;
+
+    static final long OTP_RESEND_COOLDOWN_MS = 60_000;
 
     private final AuthenticationManager authenticationManager;
 
@@ -97,8 +104,12 @@ public class UserServiceImpl implements UserService {
         Authentication authentication = authenticationManager.authenticate(
                 new UsernamePasswordAuthenticationToken(username, password));
 
-        String jwt = jwtUtils.generateJwtToken(authentication);
         UserDetailsImpl userDetails = (UserDetailsImpl) authentication.getPrincipal();
+        // Checked only after the password matched, so it doesn't reveal which usernames exist.
+        if (!userDetails.isVerified())
+            throw new DisabledException("Account is not verified yet");
+
+        String jwt = jwtUtils.generateJwtToken(authentication);
 
         return new JwtResponse(jwt,
                 userDetails.getId(),
@@ -109,15 +120,26 @@ public class UserServiceImpl implements UserService {
     @Override
     @Transactional
     public boolean verify(Long userId, String otp) {
-        Optional<UserOtp> userOtp = otpRepository.findOneByUserIdAndOtpAndExpiryDateGreaterThan(userId, otp, new Date());
+        Optional<UserOtp> found = otpRepository.findOneByUserId(userId);
+        if (found.isEmpty())
+            return false;
 
-        userOtp.ifPresent(found -> {
-            User user = found.getUser();
-            user.setVerifiedDate(new Date());
-            user.getUserOtps().remove(found);
-            otpRepository.delete(found);
-        });
-        return userOtp.isPresent();
+        UserOtp userOtp = found.get();
+        User user = userOtp.getUser();
+        // A locked-out OTP is kept (not deleted) so its sent date still enforces the resend cooldown.
+        if (userOtp.getExpiryDate().before(new Date()) || userOtp.getFailedAttempts() >= MAX_OTP_ATTEMPTS)
+            return false;
+
+        if (!MessageDigest.isEqual(userOtp.getOtp().getBytes(StandardCharsets.UTF_8), otp.getBytes(StandardCharsets.UTF_8))) {
+            // Returning (not throwing) keeps the transaction, so the failed attempt is saved.
+            userOtp.setFailedAttempts(userOtp.getFailedAttempts() + 1);
+            return false;
+        }
+
+        user.setVerifiedDate(new Date());
+        user.getUserOtps().remove(userOtp);
+        otpRepository.delete(userOtp);
+        return true;
     }
 
     @Override
@@ -129,8 +151,17 @@ public class UserServiceImpl implements UserService {
         if (user.getVerifiedDate() != null)
             throw MarketException.badRequest("User is already verified.");
 
-        UserOtp otp = otpRepository.findOneByUserId(userId).orElseGet(() -> newOtp(user));
-        otp.setExpiryDate(new Date(System.currentTimeMillis() + otpExpirationMs))
+        UserOtp otp = otpRepository.findOneByUserId(userId).orElse(null);
+        if (otp != null && otp.getSentDate() != null
+                && System.currentTimeMillis() - otp.getSentDate().getTime() < OTP_RESEND_COOLDOWN_MS)
+            throw MarketException.badRequest("Please wait a minute before requesting a new OTP.");
+
+        if (otp == null)
+            otp = newOtp(user);
+        Date now = new Date();
+        otp.setExpiryDate(new Date(now.getTime() + otpExpirationMs))
+                .setSentDate(now)
+                .setFailedAttempts(0)
                 .setOtp(generateOtp());
         otpRepository.save(otp);
 
@@ -150,9 +181,11 @@ public class UserServiceImpl implements UserService {
     }
 
     private UserOtp newOtp(User user) {
+        Date now = new Date();
         return new UserOtp()
                 .setUser(user)
-                .setExpiryDate(new Date(System.currentTimeMillis() + otpExpirationMs))
+                .setSentDate(now)
+                .setExpiryDate(new Date(now.getTime() + otpExpirationMs))
                 .setOtp(generateOtp());
     }
 
