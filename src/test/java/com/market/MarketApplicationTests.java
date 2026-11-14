@@ -377,20 +377,20 @@ class MarketApplicationTests {
         LoginAttemptService attempts = new LoginAttemptService();
         // Rotating addresses inside one IPv6 /64 doesn't escape the limit.
         for (int i = 1; i <= 5; i++)
-            attempts.recordFailure("victim", "2001:db8:1:2::" + i);
-        assertThatThrownBy(() -> attempts.checkNotBlocked("victim", "2001:db8:1:2::ffff"))
+            failSignin(attempts, "victim", "2001:db8:1:2::" + i);
+        assertThatThrownBy(() -> attempts.beginAttempt("victim", "2001:db8:1:2::ffff"))
                 .hasMessageContaining("Too many failed sign-ins");
-        attempts.checkNotBlocked("victim", "2001:db8:1:3::1");
+        attempts.beginAttempt("victim", "2001:db8:1:3::1");
 
         // Spraying many usernames from one address hits the per-client cap...
         attempts.recordSuccess("colleague", "10.0.0.9");
         for (int i = 0; i < 500; i++)
-            attempts.recordFailure("user" + i, "10.0.0.9");
-        assertThatThrownBy(() -> attempts.checkNotBlocked("someone-else", "10.0.0.9"))
+            failSignin(attempts, "user" + i, "10.0.0.9");
+        assertThatThrownBy(() -> attempts.beginAttempt("someone-else", "10.0.0.9"))
                 .isInstanceOf(MarketException.class)
                 .satisfies(e -> assertThat(((MarketException) e).getRetryAfterSeconds()).isPositive());
         // ...but users who already signed in from that shared address are not locked out with it.
-        attempts.checkNotBlocked("colleague", "10.0.0.9");
+        attempts.beginAttempt("colleague", "10.0.0.9");
     }
 
     @Test
@@ -471,11 +471,11 @@ class MarketApplicationTests {
     void signinThrottlingIsPerClientIp() {
         LoginAttemptService attempts = new LoginAttemptService();
         for (int i = 0; i < 5; i++)
-            attempts.recordFailure("victim", "10.0.0.1");
-        assertThatThrownBy(() -> attempts.checkNotBlocked("victim", "10.0.0.1"))
+            failSignin(attempts, "victim", "10.0.0.1");
+        assertThatThrownBy(() -> attempts.beginAttempt("victim", "10.0.0.1"))
                 .hasMessageContaining("Too many failed sign-ins");
         // The real user on another network is unaffected.
-        attempts.checkNotBlocked("victim", "192.168.1.20");
+        attempts.beginAttempt("victim", "192.168.1.20");
     }
 
     @Test
@@ -563,17 +563,65 @@ class MarketApplicationTests {
     }
 
     @Test
-    void signupLimitCountsOnlyTakenEmailsAndUsernames() {
-        SignupRateLimiter limiter = new SignupRateLimiter(3);
-        // Ordinary sign-ups from a shared address are never limited.
-        for (int i = 0; i < 50; i++)
-            limiter.checkNotBlocked("10.0.0.5");
-        for (int i = 0; i < 3; i++)
-            limiter.recordConflict("10.0.0.5");
-        assertThatThrownBy(() -> limiter.checkNotBlocked("10.0.0.5"))
+    void signupLimitsAllSignupsGenerouslyAndConflictsStrictly() {
+        SignupRateLimiter limiter = new SignupRateLimiter(50, 3);
+        // Ordinary sign-ups from a shared address are allowed up to the generous cap...
+        for (int i = 0; i < 50; i++) {
+            limiter.begin("10.0.0.5");
+            limiter.finish("10.0.0.5", false);
+        }
+        assertThatThrownBy(() -> limiter.begin("10.0.0.5")).isInstanceOf(MarketException.class);
+
+        // ...while hitting taken emails is limited strictly.
+        for (int i = 0; i < 3; i++) {
+            limiter.begin("10.0.0.6");
+            limiter.finish("10.0.0.6", true);
+        }
+        assertThatThrownBy(() -> limiter.begin("10.0.0.6"))
                 .isInstanceOf(MarketException.class)
                 .satisfies(e -> assertThat(((MarketException) e).getRetryAfterSeconds()).isPositive());
-        limiter.checkNotBlocked("10.0.0.6");
+        limiter.begin("10.0.0.7");
+    }
+
+    @Test
+    void signupsInProgressCountTowardTheConflictLimit() {
+        // A parallel burst: none has finished (so no conflict is recorded yet), but the 4th is already refused.
+        SignupRateLimiter limiter = new SignupRateLimiter(50, 3);
+        for (int i = 0; i < 3; i++)
+            limiter.begin("10.0.0.8");
+        assertThatThrownBy(() -> limiter.begin("10.0.0.8")).isInstanceOf(MarketException.class);
+        // Once they finish without conflict, there is room again.
+        for (int i = 0; i < 3; i++)
+            limiter.finish("10.0.0.8", false);
+        limiter.begin("10.0.0.8");
+    }
+
+    @Test
+    void parallelWrongPasswordsGetOnlyFiveTries() throws Exception {
+        long userId = signup("tara", "tara@example.com");
+        verifyUser(userId, "tara@example.com");
+        int requests = 20;
+        ExecutorService pool = Executors.newFixedThreadPool(requests);
+        CountDownLatch start = new CountDownLatch(1);
+        List<Future<Integer>> statuses = new ArrayList<>();
+        try {
+            for (int i = 0; i < requests; i++)
+                statuses.add(pool.submit(() -> {
+                    start.await();
+                    return mvc.perform(post("/api/user/signin").contentType(MediaType.APPLICATION_JSON)
+                                    .content(json(Map.of("username", "tara", "password", "wrong-password"))))
+                            .andReturn().getResponse().getStatus();
+                }));
+            start.countDown();
+            int checked = 0;
+            for (Future<Integer> status : statuses)
+                if (status.get() == 401)
+                    checked++;
+            // Each attempt is counted before the password check, so only 5 passwords are actually tried.
+            assertThat(checked).isEqualTo(5);
+        } finally {
+            pool.shutdown();
+        }
     }
 
     @Test
@@ -667,6 +715,11 @@ class MarketApplicationTests {
         mvc.perform(post("/api/user/verify").contentType(MediaType.APPLICATION_JSON)
                         .content(json(Map.of("userId", userId, "otp", otp))))
                 .andExpect(status().isOk());
+    }
+
+    private static void failSignin(LoginAttemptService attempts, String username, String clientIp) {
+        attempts.beginAttempt(username, clientIp);
+        attempts.recordFailure(username, clientIp);
     }
 
     private void runAdminInitializer(String username, String password, String email) {

@@ -7,7 +7,6 @@ import com.market.payload.response.JwtResponse;
 import com.market.payload.response.UserResponse;
 import com.market.security.services.UserDetailsImpl;
 import com.market.service.OtpService;
-import com.market.service.SignupRateLimiter;
 import com.market.service.UserService;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -27,25 +26,14 @@ public class UserController {
 
     private final OtpService otpService;
 
-    private final SignupRateLimiter signupRateLimiter;
-
-    public UserController(UserService userService, OtpService otpService, SignupRateLimiter signupRateLimiter) {
+    public UserController(UserService userService, OtpService otpService) {
         this.userService = userService;
         this.otpService = otpService;
-        this.signupRateLimiter = signupRateLimiter;
     }
 
     @PostMapping("/signup")
     public Response<UserResponse> signup(@RequestBody @Valid UserSignupRequest request, HttpServletRequest httpRequest) {
-        String clientIp = httpRequest.getRemoteAddr();
-        signupRateLimiter.checkNotBlocked(clientIp);
-        try {
-            return Response.<UserResponse>ok().setPayload(userService.signup(request));
-        } catch (MarketException e) {
-            if (e.getStatus() == Response.Status.DUPLICATE_ENTITY)
-                signupRateLimiter.recordConflict(clientIp);
-            throw e;
-        }
+        return Response.<UserResponse>ok().setPayload(userService.signup(request, httpRequest.getRemoteAddr()));
     }
 
     @PostMapping("/signin")

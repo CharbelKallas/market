@@ -5,7 +5,7 @@ import com.market.payload.response.JwtResponse;
 import com.market.payload.response.UserResponse;
 
 public interface UserService {
-    UserResponse signup(UserSignupRequest request);
+    UserResponse signup(UserSignupRequest request, String clientIp);
 
     JwtResponse signin(String username, String password, String clientIp);
 

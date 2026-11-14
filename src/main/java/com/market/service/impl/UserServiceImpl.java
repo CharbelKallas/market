@@ -13,6 +13,7 @@ import com.market.security.jwt.JwtUtils;
 import com.market.security.services.UserDetailsImpl;
 import com.market.service.LoginAttemptService;
 import com.market.service.OtpService;
+import com.market.service.SignupRateLimiter;
 import com.market.service.UserService;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
@@ -43,30 +44,45 @@ public class UserServiceImpl implements UserService {
 
     private final LoginAttemptService loginAttempts;
 
+    private final SignupRateLimiter signupLimiter;
+
     public UserServiceImpl(AuthenticationManager authenticationManager, JwtUtils jwtUtils, PasswordEncoder passwordEncoder,
-                           UserRepository userRepository, OtpService otpService, LoginAttemptService loginAttempts) {
+                           UserRepository userRepository, OtpService otpService, LoginAttemptService loginAttempts,
+                           SignupRateLimiter signupLimiter) {
         this.authenticationManager = authenticationManager;
         this.jwtUtils = jwtUtils;
         this.passwordEncoder = passwordEncoder;
         this.userRepository = userRepository;
         this.otpService = otpService;
         this.loginAttempts = loginAttempts;
+        this.signupLimiter = signupLimiter;
     }
 
     @Override
     @Transactional
-    public UserResponse signup(UserSignupRequest request) {
+    public UserResponse signup(UserSignupRequest request, String clientIp) {
         String username = User.normalizeIdentifier(request.getUsername());
         String email = User.normalizeIdentifier(request.getEmail());
 
-        Optional<User> sameUsername = userRepository.findOneByUsername(username);
-        if (sameUsername.isPresent())
-            releaseIfAbandoned(sameUsername.get(), "Username " + username + " is already taken.");
+        signupLimiter.begin(clientIp);
+        boolean conflict = false;
+        try {
+            String taken = null;
+            if (!isFreeOrAbandoned(userRepository.findOneByUsername(username)))
+                taken = "Username " + username + " is already taken.";
+            else if (!isFreeOrAbandoned(userRepository.findOneByEmail(email)))
+                taken = "Email " + email + " is already registered.";
+            if (taken != null) {
+                conflict = true;
+                throw MarketException.duplicate(taken);
+            }
+            return createUser(request, username, email);
+        } finally {
+            signupLimiter.finish(clientIp, conflict);
+        }
+    }
 
-        Optional<User> sameEmail = userRepository.findOneByEmail(email);
-        if (sameEmail.isPresent())
-            releaseIfAbandoned(sameEmail.get(), "Email " + email + " is already registered.");
-
+    private UserResponse createUser(UserSignupRequest request, String username, String email) {
         User user = new User()
                 .setUsername(username)
                 .setEmail(email)
@@ -89,7 +105,7 @@ public class UserServiceImpl implements UserService {
     @Override
     public JwtResponse signin(String username, String password, String clientIp) {
         String normalized = User.normalizeIdentifier(username);
-        loginAttempts.checkNotBlocked(normalized, clientIp);
+        loginAttempts.beginAttempt(normalized, clientIp);
 
         Authentication authentication;
         try {
@@ -142,15 +158,20 @@ public class UserServiceImpl implements UserService {
     }
 
     /**
-     * An unverified account whose OTP has expired is abandoned: delete it so the username or email can be used again.
-     * Otherwise anyone could block an email forever by signing up with it and never verifying.
+     * True if nobody holds the username/email, or only an abandoned account does: an unverified account whose OTP has
+     * expired. That account is deleted so the username or email can be used again; otherwise anyone could block an
+     * email forever by signing up with it and never verifying.
      */
-    private void releaseIfAbandoned(User existing, String conflictMessage) {
+    private boolean isFreeOrAbandoned(Optional<User> holder) {
+        if (holder.isEmpty())
+            return true;
+        User existing = holder.get();
         if (existing.getVerifiedDate() != null || otpService.hasPendingOtp(existing))
-            throw MarketException.duplicate(conflictMessage);
+            return false;
 
         userRepository.delete(existing);
         userRepository.flush();
+        return true;
     }
 
 }

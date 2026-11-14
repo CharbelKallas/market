@@ -66,26 +66,42 @@ public class LoginAttemptService {
                 }
             });
 
-    public void checkNotBlocked(String username, String clientIp) {
+    /**
+     * Call before checking the password. Throws 429 if blocked; otherwise counts the attempt for the (username, client)
+     * pair right away, so a burst of parallel guesses can't all pass before the first failure is recorded: the 6th
+     * concurrent attempt is already refused. {@link #recordSuccess} gives the attempt back.
+     */
+    public void beginAttempt(String username, String clientIp) {
         String client = clientKey(clientIp);
         String pair = username + '\n' + client;
         long now = System.currentTimeMillis();
 
-        long blockedUntil = blockedUntil(pairs.map.get(pair));
         Long trustedAt = trusted.get(pair);
         if (trustedAt == null || trustedAt < now - TRUSTED_MS)
-            blockedUntil = Math.max(blockedUntil, blockedUntil(clients.map.get(client)));
+            rejectIfBlocked(blockedUntil(clients.map.get(client)), now);
 
-        if (blockedUntil > now)
-            throw MarketException.tooManyRequests("Too many failed sign-ins. Please try again later.",
-                    (blockedUntil - now + 999) / 1000);
+        if (!pairs.hasRoomFor(pair, now, entry -> entry.lastFailure < now - LOCK_MS && entry.blockedUntil < now)) {
+            // Full of live entries: can't track this pair, but still honour a block it already has.
+            rejectIfBlocked(blockedUntil(pairs.map.get(pair)), now);
+            return;
+        }
+        long[] blockedUntil = {0};
+        pairs.map.compute(pair, (key, entry) -> {
+            if (entry != null && entry.blockedUntil > now) {
+                blockedUntil[0] = entry.blockedUntil;
+                return entry;
+            }
+            return count(entry, MAX_ATTEMPTS, now);
+        });
+        rejectIfBlocked(blockedUntil[0], now);
     }
 
+    /** A wrong password: also counts toward the client-wide limit (the pair was counted in beginAttempt). */
     public void recordFailure(String username, String clientIp) {
         String client = clientKey(clientIp);
         long now = System.currentTimeMillis();
-        recordFailure(clients, client, MAX_ATTEMPTS_PER_CLIENT, now);
-        recordFailure(pairs, username + '\n' + client, MAX_ATTEMPTS, now);
+        if (clients.hasRoomFor(client, now, entry -> entry.lastFailure < now - LOCK_MS && entry.blockedUntil < now))
+            clients.map.compute(client, (key, entry) -> count(entry, MAX_ATTEMPTS_PER_CLIENT, now));
     }
 
     public void recordSuccess(String username, String clientIp) {
@@ -95,19 +111,22 @@ public class LoginAttemptService {
         trusted.put(pair, now);
     }
 
-    private static void recordFailure(Tracker<Attempts> tracker, String key, int maxAttempts, long now) {
-        if (!tracker.hasRoomFor(key, now, entry -> entry.lastFailure < now - LOCK_MS && entry.blockedUntil < now))
-            return; // Full of live entries: don't grow further.
-        tracker.map.compute(key, (k, entry) -> {
-            Attempts next = entry == null || entry.lastFailure < now - LOCK_MS ? new Attempts() : entry;
-            next.blockedUntil = entry == null ? 0 : entry.blockedUntil;
-            next.lastFailure = now;
-            if (++next.failures >= maxAttempts) {
-                next.blockedUntil = now + LOCK_MS;
-                next.failures = 0;
-            }
-            return next;
-        });
+    /** Adds one attempt to a counter (inside compute, so atomically); reaching the limit starts a 15-minute block. */
+    private static Attempts count(Attempts entry, int maxAttempts, long now) {
+        Attempts next = entry == null || entry.lastFailure < now - LOCK_MS ? new Attempts() : entry;
+        next.blockedUntil = entry == null ? 0 : entry.blockedUntil;
+        next.lastFailure = now;
+        if (++next.failures >= maxAttempts) {
+            next.blockedUntil = now + LOCK_MS;
+            next.failures = 0;
+        }
+        return next;
+    }
+
+    private static void rejectIfBlocked(long blockedUntil, long now) {
+        if (blockedUntil > now)
+            throw MarketException.tooManyRequests("Too many failed sign-ins. Please try again later.",
+                    (blockedUntil - now + 999) / 1000);
     }
 
     private static long blockedUntil(Attempts entry) {
