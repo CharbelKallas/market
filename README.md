@@ -40,6 +40,9 @@ All settings come from environment variables; none of the secrets have real defa
 | `SMS_ENABLED`, `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_NUMBER` | Sending OTP SMS | disabled |
 | `OTP_EXPIRATION_MS` | OTP lifetime | 10 minutes |
 | `DELIVERY_CHARGE` | Delivery charge added to each order | `2.00` |
+| `API_DOCS_ENABLED` | Publish `/v3/api-docs` and Swagger UI | `true` — **set `false` in production** |
+| `TRUSTED_PROXIES` | Regex of proxy addresses whose `X-Forwarded-For` is trusted | loopback only |
+| `DB_CONNECTION_INIT_SQL` | SQL run on each new DB connection | `SET lock_timeout = '3s'` |
 
 Email is off by default. Set `MAIL_ENABLED=true` with SMTP credentials to send OTPs; otherwise read the OTP from the database (`user_otp` table).
 

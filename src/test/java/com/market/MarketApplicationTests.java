@@ -15,6 +15,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.core.env.Environment;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -33,6 +34,7 @@ import java.util.Date;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
+import java.util.regex.Pattern;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -75,6 +77,9 @@ class MarketApplicationTests {
 
     @Autowired
     private TransactionTemplate transactionTemplate;
+
+    @Autowired
+    private Environment environment;
 
     @Test
     void fullFlow_signupVerifySigninAndPlaceOrder() throws Exception {
@@ -380,6 +385,62 @@ class MarketApplicationTests {
                 .satisfies(e -> assertThat(((MarketException) e).getRetryAfterSeconds()).isPositive());
         // ...but users who already signed in from that shared address are not locked out with it.
         attempts.checkNotBlocked("colleague", "10.0.0.9");
+    }
+
+    @Test
+    void resendAnswersTheSameForUnknownAndVerifiedUsers() throws Exception {
+        String generic = "If the account is pending verification, a new code was sent.";
+        mvc.perform(post("/api/user/resend_otp").contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of("userId", 987654321))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.payload").value(generic));
+
+        long userId = signup("rosa", "rosa@example.com");
+        verifyUser(userId, "rosa@example.com");
+        mvc.perform(post("/api/user/resend_otp").contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of("userId", userId))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.payload").value(generic));
+    }
+
+    @Test
+    void onlyLoopbackProxiesAreTrustedByDefault() {
+        // Guards the backslash escaping in application.properties: a broken regex would silently trust the wrong
+        // senders (or none).
+        String trusted = environment.getProperty("server.tomcat.remoteip.internal-proxies");
+        assertThat(trusted).isNotNull();
+        Pattern pattern = Pattern.compile(trusted);
+        assertThat(pattern.matcher("127.0.0.1").matches()).isTrue();
+        assertThat(pattern.matcher("0:0:0:0:0:0:0:1").matches()).isTrue();
+        assertThat(pattern.matcher("172.17.0.1").matches()).isFalse();
+        assertThat(pattern.matcher("127a0b0c1").matches()).isFalse();
+        assertThat(environment.getProperty("spring.jpa.properties.hibernate.jdbc.time_zone")).isEqualTo("UTC");
+    }
+
+    @Test
+    void verifyGivesUpOnALockHeldTooLong() throws Exception {
+        long userId = signup("sam", "sam@example.com");
+        CountDownLatch locked = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        Thread holder = new Thread(() -> transactionTemplate.executeWithoutResult(status -> {
+            otpRepository.findForUpdateByUserId(userId);
+            locked.countDown();
+            try {
+                release.await(10, java.util.concurrent.TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }));
+        holder.start();
+        try {
+            locked.await();
+            mvc.perform(post("/api/user/verify").contentType(MediaType.APPLICATION_JSON)
+                            .content(json(Map.of("userId", userId, "otp", "wrong"))))
+                    .andExpect(status().isConflict())
+                    .andExpect(header().string("Retry-After", "1"))
+                    .andExpect(jsonPath("$.status").value("CONFLICT"));
+        } finally {
+            release.countDown();
+            holder.join();
+        }
     }
 
     @Test

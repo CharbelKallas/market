@@ -103,16 +103,20 @@ public class OtpService {
         return true;
     }
 
+    /**
+     * Sends a new code if the user exists and is still unverified. Unknown and already verified users get the same
+     * silent success, so the public endpoint doesn't reveal which accounts exist or are verified.
+     */
     @Transactional
     public void resend(Long userId) {
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> MarketException.notFound("User - " + userId + " does not exist."));
-        if (user.getVerifiedDate() != null)
-            throw MarketException.badRequest("User is already verified.");
+        User user = userRepository.findById(userId).orElse(null);
+        if (user == null || user.getVerifiedDate() != null)
+            return;
 
         // Users always have a code until they verify (locked-out codes are kept), so there is one to update.
-        UserOtp otp = otpRepository.findForUpdateByUserId(userId)
-                .orElseThrow(() -> MarketException.notFound("No OTP to resend for user " + userId + "."));
+        UserOtp otp = otpRepository.findForUpdateByUserId(userId).orElse(null);
+        if (otp == null)
+            return;
         Date now = new Date();
         if (otp.getSentDate() != null && now.getTime() - otp.getSentDate().getTime() < RESEND_COOLDOWN_MS)
             throw MarketException.badRequest("Please wait a minute before requesting a new OTP.");

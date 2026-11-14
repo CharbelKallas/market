@@ -52,7 +52,7 @@ public class UserController {
     @PostMapping("/resend_otp")
     public Response<String> resendOtp(@RequestBody @Valid ResendOtpRequest request) {
         otpService.resend(request.getUserId());
-        return Response.<String>ok().setPayload("Done");
+        return Response.<String>ok().setPayload("If the account is pending verification, a new code was sent.");
     }
 
     /** Changes the signed-in user's password and returns a new token (older tokens stop working). */

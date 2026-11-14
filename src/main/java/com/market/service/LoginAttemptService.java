@@ -5,7 +5,8 @@ import org.springframework.stereotype.Service;
 
 import java.net.Inet6Address;
 import java.net.InetAddress;
-import java.util.Iterator;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
@@ -53,8 +54,17 @@ public class LoginAttemptService {
 
     private final Tracker<Attempts> clients = new Tracker<>();
 
-    /** Pair key to the time of its last successful sign-in. */
-    private final Tracker<Long> trusted = new Tracker<>();
+    /**
+     * Pair key to the time of its last successful sign-in, least recently used first. When full, the pair unused for
+     * the longest time is dropped, so recently active users keep their trust even if someone churns the map.
+     */
+    private final Map<String, Long> trusted = Collections.synchronizedMap(
+            new LinkedHashMap<String, Long>(16, 0.75f, true) {
+                @Override
+                protected boolean removeEldestEntry(Map.Entry<String, Long> eldest) {
+                    return size() > MAX_ENTRIES;
+                }
+            });
 
     public void checkNotBlocked(String username, String clientIp) {
         String client = clientKey(clientIp);
@@ -62,7 +72,7 @@ public class LoginAttemptService {
         long now = System.currentTimeMillis();
 
         long blockedUntil = blockedUntil(pairs.map.get(pair));
-        Long trustedAt = trusted.map.get(pair);
+        Long trustedAt = trusted.get(pair);
         if (trustedAt == null || trustedAt < now - TRUSTED_MS)
             blockedUntil = Math.max(blockedUntil, blockedUntil(clients.map.get(client)));
 
@@ -82,16 +92,7 @@ public class LoginAttemptService {
         String pair = username + '\n' + clientKey(clientIp);
         long now = System.currentTimeMillis();
         pairs.map.remove(pair);
-        // Trust is only a convenience, so when the map is full of live entries an arbitrary one makes room for the
-        // newest sign-in, rather than the newest users missing out.
-        if (!trusted.hasRoomFor(pair, now, at -> at < now - TRUSTED_MS)) {
-            Iterator<String> oldest = trusted.map.keySet().iterator();
-            if (oldest.hasNext()) {
-                oldest.next();
-                oldest.remove();
-            }
-        }
-        trusted.map.put(pair, now);
+        trusted.put(pair, now);
     }
 
     private static void recordFailure(Tracker<Attempts> tracker, String key, int maxAttempts, long now) {

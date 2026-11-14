@@ -4,6 +4,7 @@ import com.market.payload.Response;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.PessimisticLockingFailureException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -61,6 +62,17 @@ public class CustomExceptionHandler extends ResponseEntityExceptionHandler {
         Response<Object> body = new Response<>().setStatus(Response.Status.EXCEPTION)
                 .addError(HttpStatus.INTERNAL_SERVER_ERROR.getReasonPhrase(), null);
         return new ResponseEntity<>(body, HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+
+    /** A row lock (e.g. on the user's OTP) couldn't be taken within the DB lock timeout: another request holds it. */
+    @ExceptionHandler(PessimisticLockingFailureException.class)
+    public ResponseEntity<Object> handleLockTimeout(PessimisticLockingFailureException ex) {
+        log.warn("Lock timeout: {}", ex.getMostSpecificCause().getMessage());
+        Response<Object> body = new Response<>().setStatus(Response.Status.CONFLICT)
+                .addError("Another request for this account is in progress. Please retry.", null);
+        HttpHeaders headers = new HttpHeaders();
+        headers.set(HttpHeaders.RETRY_AFTER, "1");
+        return new ResponseEntity<>(body, headers, HttpStatus.CONFLICT);
     }
 
     @ExceptionHandler(MaxUploadSizeExceededException.class)
