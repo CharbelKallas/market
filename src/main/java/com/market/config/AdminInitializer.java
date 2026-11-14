@@ -16,6 +16,7 @@ import org.springframework.util.StringUtils;
 
 import java.util.Date;
 import java.util.HashSet;
+import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -51,8 +52,17 @@ public class AdminInitializer implements ApplicationRunner {
     @Override
     @Transactional
     public void run(ApplicationArguments args) {
-        if (!StringUtils.hasText(username) || !StringUtils.hasText(password) || userRepository.existsByUsername(username))
+        if (!StringUtils.hasText(username) || !StringUtils.hasText(password))
             return;
+
+        Optional<User> existing = userRepository.findOneByUsername(username);
+        if (existing.isPresent()) {
+            boolean isAdmin = existing.get().getUserRoles().stream().anyMatch(role -> role.getName() == Role.ROLE_ADMIN);
+            if (!isAdmin)
+                log.warn("ADMIN_USERNAME '{}' belongs to an existing non-admin user, so no admin was created. "
+                        + "Choose another ADMIN_USERNAME.", username);
+            return;
+        }
 
         User admin = new User()
                 .setUsername(username)

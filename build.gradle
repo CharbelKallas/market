@@ -51,3 +51,9 @@ dependencies {
 test {
     useJUnitPlatform()
 }
+
+// Local runs only: a throwaway JWT secret when none is set. It lives in the build script so it never ships in the jar.
+bootRun {
+    if (!System.getenv('JWT_SECRET'))
+        environment 'JWT_SECRET', 'local-dev-only-secret-change-me-0123456789'
+}

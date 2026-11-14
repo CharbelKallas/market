@@ -2,6 +2,7 @@ package com.market;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.market.repository.UserOtpRepository;
 import com.market.service.MessageService;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -15,6 +16,7 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
+import java.util.Date;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -40,6 +42,9 @@ class MarketApplicationTests {
 
     @MockBean
     private MessageService messageService;
+
+    @Autowired
+    private UserOtpRepository otpRepository;
 
     @Test
     void fullFlow_signupVerifySigninAndPlaceOrder() throws Exception {
@@ -156,6 +161,60 @@ class MarketApplicationTests {
                 .andExpect(status().isOk());
 
         signin("bob", "newpassword123");
+
+        // Tokens issued before the change no longer work.
+        mvc.perform(get("/api/item/all").header("Authorization", "Bearer " + token))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void abandonedUnverifiedAccountCanBeReclaimed() throws Exception {
+        long squatterId = signup("frank", "frank@example.com");
+        mvc.perform(post("/api/user/signup").contentType(MediaType.APPLICATION_JSON)
+                        .content(json(signupBody("frank2", "frank@example.com"))))
+                .andExpect(status().isConflict());
+
+        var otp = otpRepository.findOneByUserId(squatterId).orElseThrow();
+        otpRepository.save(otp.setExpiryDate(new Date(System.currentTimeMillis() - 1000)));
+
+        long ownerId = signup("frank2", "frank@example.com");
+        assertThat(ownerId).isNotEqualTo(squatterId);
+    }
+
+    @Test
+    void otpResendsAreCappedPerDay() throws Exception {
+        long userId = signup("gina", "gina@example.com");
+        var otp = otpRepository.findOneByUserId(userId).orElseThrow();
+        Date past = new Date(System.currentTimeMillis() - 120_000);
+        otpRepository.save(otp.setSentDate(past));
+
+        mvc.perform(post("/api/user/resend_otp").contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of("userId", userId))))
+                .andExpect(status().isOk());
+
+        otp = otpRepository.findOneByUserId(userId).orElseThrow();
+        otpRepository.save(otp.setSentDate(past).setResendCount(5));
+        mvc.perform(post("/api/user/resend_otp").contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of("userId", userId))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors.message").value("Too many OTP requests. Please try again tomorrow."));
+    }
+
+    @Test
+    void malformedJsonAndUnknownItemsUseTheStandardErrorShape() throws Exception {
+        mvc.perform(post("/api/user/signin").contentType(MediaType.APPLICATION_JSON).content("{not json"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value("BAD_REQUEST"))
+                .andExpect(jsonPath("$.errors.message").exists());
+
+        long userId = signup("hank", "hank@example.com");
+        verifyUser(userId, "hank@example.com");
+        String token = signin("hank", "password123");
+        mvc.perform(post("/api/order/place").contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of("locationLatitude", 1, "locationLongitude", 1, "items", Map.of("999999", 1))))
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errors.message").value("Items not found: [999999]"));
     }
 
     @Test

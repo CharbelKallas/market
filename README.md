@@ -13,10 +13,10 @@ A hand-drawn sketch of the intended data model is in [docs/data-model-sketch.jpe
 Requirements: Java 11+ (17 recommended) and PostgreSQL.
 
 ```bash
-SPRING_PROFILES_ACTIVE=dev ./gradlew bootRun
+./gradlew bootRun
 ```
 
-The `dev` profile supplies a local-only `JWT_SECRET`. Without it (or a real `JWT_SECRET`) the app refuses to start.
+`bootRun` supplies a throwaway `JWT_SECRET` for local use. A packaged jar has no default and refuses to start without one.
 
 By default the app connects to `jdbc:postgresql://localhost:5433/market` with user/password `market`. For example:
 
@@ -34,7 +34,7 @@ All settings come from environment variables; none of the secrets have real defa
 | --- | --- | --- |
 | `DB_URL`, `DB_USERNAME`, `DB_PASSWORD` | PostgreSQL connection | local `market` database |
 | `DDL_AUTO` | Hibernate schema mode | `update` |
-| `JWT_SECRET` | JWT signing key, at least 32 bytes | **required** (the `dev` profile sets a local-only value) |
+| `JWT_SECRET` | JWT signing key, at least 32 bytes | **required** (`./gradlew bootRun` sets a local-only value) |
 | `JWT_EXPIRATION_MS` | Token lifetime | 1 day |
 | `ADMIN_USERNAME`, `ADMIN_PASSWORD`, `ADMIN_EMAIL` | Creates an admin account at startup if it doesn't exist | unset (no admin) |
 | `MAIL_ENABLED`, `MAIL_HOST`, `MAIL_PORT`, `MAIL_USERNAME`, `MAIL_PASSWORD` | Sending OTP emails | disabled, Gmail SMTP, no credentials |
@@ -44,7 +44,9 @@ All settings come from environment variables; none of the secrets have real defa
 
 Email is off by default. Set `MAIL_ENABLED=true` with SMTP credentials to send OTPs; otherwise read the OTP from the database (`user_otp` table).
 
-An OTP stops working after 5 wrong guesses, and a new one can be requested at most once a minute.
+An OTP stops working after 5 wrong guesses. A new one can be requested at most once a minute and 5 times a day. An unverified account whose OTP has expired is removed when someone signs up again with the same username or email.
+
+Changing the password signs out every existing session (older tokens stop working).
 
 ### Upgrading an existing database
 

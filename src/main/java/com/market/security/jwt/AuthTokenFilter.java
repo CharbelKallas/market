@@ -1,6 +1,7 @@
 package com.market.security.jwt;
 
 import com.market.security.services.UserDetailsImpl;
+import io.jsonwebtoken.Claims;
 import com.market.security.services.UserDetailsServiceImpl;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -32,12 +33,14 @@ public class AuthTokenFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
         String jwt = parseJwt(request);
-        String username = jwt == null ? null : jwtUtils.getValidatedUsername(jwt);
+        Claims claims = jwt == null ? null : jwtUtils.parseValidToken(jwt);
 
-        if (username != null) {
+        if (claims != null) {
+            String username = claims.getSubject();
             try {
                 UserDetailsImpl userDetails = (UserDetailsImpl) userDetailsService.loadUserByUsername(username);
-                if (userDetails.isVerified()) {
+                // A token from before the last password change has an older version and is rejected.
+                if (userDetails.isVerified() && JwtUtils.tokenVersion(claims) == userDetails.getTokenVersion()) {
                     UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
                             userDetails, null, userDetails.getAuthorities());
                     authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));

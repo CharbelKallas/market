@@ -22,6 +22,8 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -39,6 +41,10 @@ public class UserServiceImpl implements UserService {
     static final int MAX_OTP_ATTEMPTS = 5;
 
     static final long OTP_RESEND_COOLDOWN_MS = 60_000;
+
+    static final int MAX_RESENDS_PER_DAY = 5;
+
+    private static final long DAY_MS = 24 * 60 * 60 * 1000L;
 
     private final AuthenticationManager authenticationManager;
 
@@ -73,11 +79,13 @@ public class UserServiceImpl implements UserService {
     @Override
     @Transactional
     public UserResponse signup(UserSignupRequest request) {
-        if (userRepository.existsByUsername(request.getUsername()))
-            throw MarketException.duplicate("Username " + request.getUsername() + " is already taken.");
+        Optional<User> sameUsername = userRepository.findOneByUsername(request.getUsername());
+        if (sameUsername.isPresent())
+            releaseIfAbandoned(sameUsername.get(), "Username " + request.getUsername() + " is already taken.");
 
-        if (userRepository.existsByEmail(request.getEmail()))
-            throw MarketException.duplicate("Email " + request.getEmail() + " is already registered.");
+        Optional<User> sameEmail = userRepository.findOneByEmail(request.getEmail());
+        if (sameEmail.isPresent())
+            releaseIfAbandoned(sameEmail.get(), "Email " + request.getEmail() + " is already registered.");
 
         User user = new User()
                 .setUsername(request.getUsername())
@@ -93,8 +101,7 @@ public class UserServiceImpl implements UserService {
         user.setUserOtps(new HashSet<>(Set.of(userOtp)));
 
         User saved = userRepository.save(user);
-        // Sent last: if sending fails, the transaction rolls back and no half-created user is left behind.
-        sendOtp(saved, userOtp.getOtp());
+        sendOtpAfterCommit(saved, userOtp.getOtp());
 
         return toUserResponse(saved);
     }
@@ -159,13 +166,20 @@ public class UserServiceImpl implements UserService {
         if (otp == null)
             otp = newOtp(user);
         Date now = new Date();
+        if (otp.getResendWindowStart() == null || now.getTime() - otp.getResendWindowStart().getTime() >= DAY_MS)
+            otp.setResendWindowStart(now).setResendCount(0);
+        // Each resend resets the guess limit, so resends themselves must be limited.
+        if (otp.getResendCount() >= MAX_RESENDS_PER_DAY)
+            throw MarketException.badRequest("Too many OTP requests. Please try again tomorrow.");
+
         otp.setExpiryDate(new Date(now.getTime() + otpExpirationMs))
                 .setSentDate(now)
                 .setFailedAttempts(0)
+                .setResendCount(otp.getResendCount() + 1)
                 .setOtp(generateOtp());
         otpRepository.save(otp);
 
-        sendOtp(user, otp.getOtp());
+        sendOtpAfterCommit(user, otp.getOtp());
     }
 
     @Override
@@ -177,7 +191,8 @@ public class UserServiceImpl implements UserService {
         if (!passwordEncoder.matches(oldPassword, user.getPassword()))
             throw MarketException.badRequest("The old password is not valid.");
 
-        user.setPassword(passwordEncoder.encode(newPassword));
+        user.setPassword(passwordEncoder.encode(newPassword))
+                .setTokenVersion(user.getTokenVersion() + 1);
     }
 
     private UserOtp newOtp(User user) {
@@ -204,9 +219,35 @@ public class UserServiceImpl implements UserService {
                 .setMobileNumber(user.getMobileNumber());
     }
 
-    private void sendOtp(User user, String otp) {
-        messageService.sendEmailMessage(user.getEmail(), "OTP verification", "Your OTP is : " + otp);
-        messageService.sendSmsMessage(user.getMobileNumber(), "Your OTP is : " + otp);
+    /**
+     * An unverified account whose OTP has expired is abandoned: delete it so the username or email can be used again.
+     * Otherwise anyone could block an email forever by signing up with it and never verifying.
+     */
+    private void releaseIfAbandoned(User existing, String conflictMessage) {
+        Date now = new Date();
+        boolean pendingOtp = existing.getUserOtps() != null && existing.getUserOtps().stream()
+                .anyMatch(otp -> otp.getExpiryDate().after(now));
+        if (existing.getVerifiedDate() != null || pendingOtp)
+            throw MarketException.duplicate(conflictMessage);
+
+        userRepository.delete(existing);
+        userRepository.flush();
+    }
+
+    /**
+     * Sends the OTP only once the transaction has committed, so no DB connection is held during the SMTP/SMS call
+     * and nobody receives a code for an account that was rolled back. If sending fails, the user can resend.
+     */
+    private void sendOtpAfterCommit(User user, String otp) {
+        String email = user.getEmail();
+        String mobileNumber = user.getMobileNumber();
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                messageService.sendEmailMessage(email, "OTP verification", "Your OTP is : " + otp);
+                messageService.sendSmsMessage(mobileNumber, "Your OTP is : " + otp);
+            }
+        });
     }
 
 }

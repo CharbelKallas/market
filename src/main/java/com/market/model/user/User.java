@@ -43,6 +43,10 @@ public class User {
     @Column(name = "verified_date")
     private Date verifiedDate;
 
+    /** Embedded in each JWT; bumping it (on password change) invalidates all earlier tokens. */
+    @Column(name = "token_version", nullable = false, columnDefinition = "integer not null default 0")
+    private int tokenVersion;
+
     @OneToMany(mappedBy = "user", cascade = CascadeType.ALL)
     private Set<UserOtp> userOtps;
 

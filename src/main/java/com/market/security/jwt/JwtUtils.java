@@ -1,6 +1,7 @@
 package com.market.security.jwt;
 
 import com.market.security.services.UserDetailsImpl;
+import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.SignatureAlgorithm;
@@ -18,6 +19,8 @@ import java.util.Date;
 @Component
 public class JwtUtils {
     private static final Logger logger = LoggerFactory.getLogger(JwtUtils.class);
+
+    private static final String VERSION_CLAIM = "ver";
 
     private final SecretKey key;
 
@@ -38,6 +41,7 @@ public class JwtUtils {
 
         return Jwts.builder()
                 .setSubject(userPrincipal.getUsername())
+                .claim(VERSION_CLAIM, userPrincipal.getTokenVersion())
                 .setIssuedAt(now)
                 .setExpiration(new Date(now.getTime() + jwtExpirationMs))
                 .signWith(key, SignatureAlgorithm.HS256)
@@ -45,15 +49,21 @@ public class JwtUtils {
     }
 
     /**
-     * Returns the username in the token, or null if the token is invalid or expired.
+     * Returns the token's claims, or null if the token is invalid or expired.
      */
-    public String getValidatedUsername(String token) {
+    public Claims parseValidToken(String token) {
         try {
             return Jwts.parserBuilder().setSigningKey(key).build()
-                    .parseClaimsJws(token).getBody().getSubject();
+                    .parseClaimsJws(token).getBody();
         } catch (JwtException | IllegalArgumentException e) {
             logger.debug("Rejected JWT: {}", e.getMessage());
             return null;
         }
+    }
+
+    /** The token version the token was issued with, or -1 if it has none. */
+    public static int tokenVersion(Claims claims) {
+        Integer version = claims.get(VERSION_CLAIM, Integer.class);
+        return version == null ? -1 : version;
     }
 }

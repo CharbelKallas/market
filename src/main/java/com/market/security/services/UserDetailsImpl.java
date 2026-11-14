@@ -31,15 +31,18 @@ public class UserDetailsImpl implements UserDetails {
      */
     private final boolean verified;
 
+    private final int tokenVersion;
+
     private final Collection<? extends GrantedAuthority> authorities;
 
     public UserDetailsImpl(Long id, String username, String email, String password, boolean verified,
-                           Collection<? extends GrantedAuthority> authorities) {
+                           int tokenVersion, Collection<? extends GrantedAuthority> authorities) {
         this.id = id;
         this.username = username;
         this.email = email;
         this.password = password;
         this.verified = verified;
+        this.tokenVersion = tokenVersion;
         this.authorities = authorities;
     }
 
@@ -54,6 +57,7 @@ public class UserDetailsImpl implements UserDetails {
                 user.getEmail(),
                 user.getPassword(),
                 user.getVerifiedDate() != null,
+                user.getTokenVersion(),
                 authorities);
     }
 

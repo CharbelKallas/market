@@ -21,6 +21,10 @@ import java.math.BigDecimal;
 import java.util.Comparator;
 import java.util.Date;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.TreeSet;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 @Service
@@ -55,9 +59,15 @@ public class OrderServiceImpl implements OrderService {
                 .setLocationLongitude(orderRequest.getLocationLongitude())
                 .setDeliveryCharge(deliveryCharge);
 
+        Map<Long, Item> items = itemRepository.findAllById(orderRequest.getItems().keySet()).stream()
+                .collect(Collectors.toMap(Item::getId, Function.identity()));
+        Set<Long> missing = new TreeSet<>(orderRequest.getItems().keySet());
+        missing.removeAll(items.keySet());
+        if (!missing.isEmpty())
+            throw MarketException.notFound("Items not found: " + missing);
+
         orderRequest.getItems().forEach((itemId, qty) -> {
-            Item item = itemRepository.findById(itemId)
-                    .orElseThrow(() -> MarketException.notFound("Item " + itemId + " not found."));
+            Item item = items.get(itemId);
 
             ItemAmount itemAmount = item.getCurrentAmount()
                     .orElseThrow(() -> MarketException.badRequest("Item " + item.getItemName() + " has no price yet."));
