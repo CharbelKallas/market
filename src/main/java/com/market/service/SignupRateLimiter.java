@@ -4,9 +4,6 @@ import com.market.exception.MarketException;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Limits sign-ups per client address, in one-hour windows:
@@ -25,17 +22,14 @@ public class SignupRateLimiter {
 
     static final long WINDOW_MS = 60 * 60 * 1000L;
 
+    /** When full, the least recently used window is dropped (see {@link BoundedLruMap}), so nobody is refused. */
     static final int MAX_ENTRIES = 100_000;
-
-    private static final long CLEANUP_INTERVAL_MS = 60_000;
 
     private final int maxSignupsPerWindow;
 
     private final int maxConflictsPerWindow;
 
-    private final Map<String, Window> windows = new ConcurrentHashMap<>();
-
-    private final AtomicLong lastCleanup = new AtomicLong();
+    private final BoundedLruMap<Window> windows = new BoundedLruMap<>(MAX_ENTRIES);
 
     public SignupRateLimiter(@Value("${app.signup.maxPerHourPerClient}") int maxSignupsPerWindow,
                              @Value("${app.signup.maxConflictsPerHourPerClient}") int maxConflictsPerWindow) {
@@ -47,14 +41,6 @@ public class SignupRateLimiter {
     public void begin(String clientIp) {
         String client = LoginAttemptService.clientKey(clientIp);
         long now = System.currentTimeMillis();
-        if (!windows.containsKey(client) && windows.size() >= MAX_ENTRIES) {
-            long last = lastCleanup.get();
-            if (now - last >= CLEANUP_INTERVAL_MS && lastCleanup.compareAndSet(last, now))
-                windows.values().removeIf(window -> window.start < now - WINDOW_MS && window.inFlight == 0);
-            if (windows.size() >= MAX_ENTRIES)
-                throw MarketException.tooManyRequests("Too many sign-ups right now. Please try again later.", 60);
-        }
-
         long[] retryAt = {0};
         windows.compute(client, (key, current) -> {
             Window window = current == null ? new Window(now) : current;

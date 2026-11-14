@@ -9,6 +9,8 @@ import com.market.exception.CustomExceptionHandler;
 import com.market.exception.MarketException;
 import com.market.repository.UserOtpRepository;
 import com.market.repository.UserRepository;
+import com.market.config.UntrustedProxyDetector;
+import com.market.service.BoundedLruMap;
 import com.market.service.LoginAttemptService;
 import com.market.service.MessageService;
 import com.market.service.SignupRateLimiter;
@@ -22,6 +24,9 @@ import org.springframework.core.env.Environment;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.mock.web.MockFilterChain;
+import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
@@ -581,6 +586,59 @@ class MarketApplicationTests {
                 .isInstanceOf(MarketException.class)
                 .satisfies(e -> assertThat(((MarketException) e).getRetryAfterSeconds()).isPositive());
         limiter.begin("10.0.0.7");
+    }
+
+    @Test
+    void boundedMapDropsTheLeastRecentlyUsedEntry() {
+        BoundedLruMap<Integer> map = new BoundedLruMap<>(3);
+        map.put("a", 1);
+        map.put("b", 2);
+        map.put("c", 3);
+        map.get("a");
+        map.put("d", 4);
+        assertThat(map.get("b")).isNull();
+        assertThat(map.get("a")).isEqualTo(1);
+        assertThat(map.size()).isEqualTo(3);
+    }
+
+    @Test
+    void limitersKeepWorkingWhenTheirMapsAreFull() {
+        SignupRateLimiter signups = new SignupRateLimiter(50, 3);
+        LoginAttemptService attempts = new LoginAttemptService();
+        for (int i = 0; i <= 100_000; i++) {
+            String address = "10." + (i >> 16 & 255) + "." + (i >> 8 & 255) + "." + (i & 255);
+            signups.begin(address);
+            signups.finish(address, false);
+            attempts.beginAttempt("someone", address);
+        }
+        // A newcomer can still sign up...
+        signups.begin("203.0.113.50");
+        // ...and a new (username, client) pair is still counted and blocked after 5 failures.
+        for (int i = 0; i < 5; i++)
+            failSignin(attempts, "target", "203.0.113.60");
+        assertThatThrownBy(() -> attempts.beginAttempt("target", "203.0.113.60"))
+                .isInstanceOf(MarketException.class);
+    }
+
+    @Test
+    void untrustedProxyIsReportedOnce() throws Exception {
+        assertThat(UntrustedProxyDetector.isPrivateAddress("10.42.0.7")).isTrue();
+        assertThat(UntrustedProxyDetector.isPrivateAddress("fd12:3456::1")).isTrue();
+        assertThat(UntrustedProxyDetector.isPrivateAddress("203.0.113.9")).isFalse();
+        assertThat(UntrustedProxyDetector.isPrivateAddress("999.1.1.1")).isFalse();
+
+        UntrustedProxyDetector detector = new UntrustedProxyDetector();
+        MockHttpServletRequest direct = new MockHttpServletRequest();
+        direct.setRemoteAddr("203.0.113.9");
+        direct.addHeader("X-Forwarded-For", "198.51.100.1");
+        detector.doFilter(direct, new MockHttpServletResponse(), new MockFilterChain());
+        assertThat(detector.hasWarned()).isFalse();
+
+        MockHttpServletRequest viaProxy = new MockHttpServletRequest();
+        viaProxy.setRemoteAddr("10.42.0.7");
+        viaProxy.addHeader("X-Forwarded-For", "198.51.100.1");
+        detector.doFilter(viaProxy, new MockHttpServletResponse(), new MockFilterChain());
+        assertThat(detector.hasWarned()).isTrue();
     }
 
     @Test

@@ -5,12 +5,6 @@ import org.springframework.stereotype.Service;
 
 import java.net.Inet6Address;
 import java.net.InetAddress;
-import java.util.Collections;
-import java.util.LinkedHashMap;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicLong;
-import java.util.function.Predicate;
 import java.util.regex.Pattern;
 
 /**
@@ -39,10 +33,8 @@ public class LoginAttemptService {
     /** How long a successful sign-in keeps a (username, client) pair trusted through a client-wide block. */
     static final long TRUSTED_MS = 7L * 24 * 60 * 60 * 1000;
 
-    /** Upper bound per map, so a flood of random usernames or addresses can't exhaust memory. */
+    /** Upper bound per map; when full, the least recently used entry is dropped (see {@link BoundedLruMap}). */
     static final int MAX_ENTRIES = 100_000;
-
-    private static final long CLEANUP_INTERVAL_MS = 60_000;
 
     /** Four dot-separated numbers from 0 to 255: anything else could make InetAddress fall back to a DNS lookup. */
     private static final Pattern IPV4 = Pattern.compile(
@@ -50,21 +42,12 @@ public class LoginAttemptService {
 
     private static final Pattern IPV6 = Pattern.compile("^[0-9a-fA-F:.]+$");
 
-    private final Tracker<Attempts> pairs = new Tracker<>();
+    private final BoundedLruMap<Attempts> pairs = new BoundedLruMap<>(MAX_ENTRIES);
 
-    private final Tracker<Attempts> clients = new Tracker<>();
+    private final BoundedLruMap<Attempts> clients = new BoundedLruMap<>(MAX_ENTRIES);
 
-    /**
-     * Pair key to the time of its last successful sign-in, least recently used first. When full, the pair unused for
-     * the longest time is dropped, so recently active users keep their trust even if someone churns the map.
-     */
-    private final Map<String, Long> trusted = Collections.synchronizedMap(
-            new LinkedHashMap<String, Long>(16, 0.75f, true) {
-                @Override
-                protected boolean removeEldestEntry(Map.Entry<String, Long> eldest) {
-                    return size() > MAX_ENTRIES;
-                }
-            });
+    /** Pair key to the time of its last successful sign-in. */
+    private final BoundedLruMap<Long> trusted = new BoundedLruMap<>(MAX_ENTRIES);
 
     /**
      * Call before checking the password. Throws 429 if blocked; otherwise counts the attempt for the (username, client)
@@ -78,15 +61,10 @@ public class LoginAttemptService {
 
         Long trustedAt = trusted.get(pair);
         if (trustedAt == null || trustedAt < now - TRUSTED_MS)
-            rejectIfBlocked(blockedUntil(clients.map.get(client)), now);
+            rejectIfBlocked(blockedUntil(clients.get(client)), now);
 
-        if (!pairs.hasRoomFor(pair, now, entry -> entry.lastFailure < now - LOCK_MS && entry.blockedUntil < now)) {
-            // Full of live entries: can't track this pair, but still honour a block it already has.
-            rejectIfBlocked(blockedUntil(pairs.map.get(pair)), now);
-            return;
-        }
         long[] blockedUntil = {0};
-        pairs.map.compute(pair, (key, entry) -> {
+        pairs.compute(pair, (key, entry) -> {
             if (entry != null && entry.blockedUntil > now) {
                 blockedUntil[0] = entry.blockedUntil;
                 return entry;
@@ -100,14 +78,13 @@ public class LoginAttemptService {
     public void recordFailure(String username, String clientIp) {
         String client = clientKey(clientIp);
         long now = System.currentTimeMillis();
-        if (clients.hasRoomFor(client, now, entry -> entry.lastFailure < now - LOCK_MS && entry.blockedUntil < now))
-            clients.map.compute(client, (key, entry) -> count(entry, MAX_ATTEMPTS_PER_CLIENT, now));
+        clients.compute(client, (key, entry) -> count(entry, MAX_ATTEMPTS_PER_CLIENT, now));
     }
 
     public void recordSuccess(String username, String clientIp) {
         String pair = username + '\n' + clientKey(clientIp);
         long now = System.currentTimeMillis();
-        pairs.map.remove(pair);
+        pairs.remove(pair);
         trusted.put(pair, now);
     }
 
@@ -140,38 +117,32 @@ public class LoginAttemptService {
     public static String clientKey(String clientIp) {
         if (clientIp == null)
             return "unknown";
-        boolean ipv4 = IPV4.matcher(clientIp).matches();
-        boolean ipv6 = !ipv4 && clientIp.indexOf(':') >= 0 && IPV6.matcher(clientIp).matches();
-        if (!ipv4 && !ipv6)
+        InetAddress address = parseLiteral(clientIp);
+        if (address == null)
             return clientIp;
-        try {
-            // A numeric literal: InetAddress parses it without any lookup.
-            InetAddress address = InetAddress.getByName(clientIp);
-            if (address instanceof Inet6Address) {
-                byte[] bytes = address.getAddress();
-                StringBuilder prefix = new StringBuilder();
-                for (int i = 0; i < 8; i++)
-                    prefix.append(String.format("%02x", bytes[i]));
-                return prefix + "::/64";
-            }
-            return address.getHostAddress();
-        } catch (Exception e) {
-            return clientIp;
+        if (address instanceof Inet6Address) {
+            byte[] bytes = address.getAddress();
+            StringBuilder prefix = new StringBuilder();
+            for (int i = 0; i < 8; i++)
+                prefix.append(String.format("%02x", bytes[i]));
+            return prefix + "::/64";
         }
+        return address.getHostAddress();
     }
 
-    /** A bounded map whose stale entries are swept at most once a minute, never on every request. */
-    private static final class Tracker<V> {
-        final Map<String, V> map = new ConcurrentHashMap<>();
-        final AtomicLong lastCleanup = new AtomicLong();
-
-        boolean hasRoomFor(String key, long now, Predicate<V> stale) {
-            if (map.size() < MAX_ENTRIES || map.containsKey(key))
-                return true;
-            long last = lastCleanup.get();
-            if (now - last >= CLEANUP_INTERVAL_MS && lastCleanup.compareAndSet(last, now))
-                map.values().removeIf(stale);
-            return map.size() < MAX_ENTRIES;
+    /** Parses a numeric IPv4/IPv6 literal, or returns null for anything else. Never does a DNS lookup. */
+    public static InetAddress parseLiteral(String text) {
+        if (text == null)
+            return null;
+        boolean ipv4 = IPV4.matcher(text).matches();
+        boolean ipv6 = !ipv4 && text.indexOf(':') >= 0 && IPV6.matcher(text).matches();
+        if (!ipv4 && !ipv6)
+            return null;
+        try {
+            // A valid numeric literal: InetAddress parses it without any lookup.
+            return InetAddress.getByName(text);
+        } catch (Exception e) {
+            return null;
         }
     }
 
