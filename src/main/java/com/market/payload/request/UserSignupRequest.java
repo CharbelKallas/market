@@ -6,7 +6,11 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 import lombok.experimental.Accessors;
 
-import javax.validation.constraints.NotEmpty;
+import com.market.payload.validation.BcryptPassword;
+
+import javax.validation.constraints.Email;
+import javax.validation.constraints.NotBlank;
+import javax.validation.constraints.Pattern;
 
 @Getter
 @Setter
@@ -14,21 +18,27 @@ import javax.validation.constraints.NotEmpty;
 @NoArgsConstructor
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class UserSignupRequest {
-    @NotEmpty
+    @NotBlank
+    @Email
     private String email;
 
-    @NotEmpty
+    @NotBlank
+    @Pattern(regexp = "^[A-Za-z0-9._-]{3,50}$",
+            message = "must be 3-50 characters: letters, digits, '.', '_' or '-'")
     private String username;
 
-    @NotEmpty
+    @NotBlank
+    @BcryptPassword
     private String password;
 
-    @NotEmpty
+    @NotBlank
     private String firstName;
 
-    @NotEmpty
+    @NotBlank
     private String lastName;
 
-    @NotEmpty
+    /** International (E.164) format, e.g. +96170123456, so SMS sending can actually reach it. */
+    @NotBlank
+    @Pattern(regexp = "^\\+[1-9]\\d{7,14}$", message = "must be in international format, e.g. +96170123456")
     private String mobileNumber;
 }

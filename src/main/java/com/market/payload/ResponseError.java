@@ -18,5 +18,5 @@ import java.util.Date;
 public class ResponseError {
     private Date timestamp;
     private String message;
-    private String details;
+    private Object details;
 }

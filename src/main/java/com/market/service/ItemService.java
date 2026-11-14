@@ -1,17 +1,15 @@
 package com.market.service;
 
-import com.market.model.item.Item;
+import com.market.model.item.ItemImage;
 import com.market.payload.request.NewItemRequest;
 import com.market.payload.response.ItemResponse;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
-import java.io.IOException;
-
 public interface ItemService {
-    ItemResponse save(NewItemRequest itemRequest) throws IOException;
+    ItemResponse save(NewItemRequest itemRequest);
 
     Page<ItemResponse> getAll(Pageable pageable);
 
-    Item getItem(Long itemId);
+    ItemImage getImage(Long itemId);
 }

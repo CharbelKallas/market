@@ -9,9 +9,13 @@ import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import javax.persistence.*;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.Set;
 
+/**
+ * One price of an item. Prices are kept as history; the newest active one applies.
+ */
 @Getter
 @Setter
 @NoArgsConstructor
@@ -26,17 +30,18 @@ public class ItemAmount {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "active_date")
+    @Column(name = "active_date", nullable = false)
     @CreatedDate
     private LocalDateTime activeDate;
 
-    private double amount;
+    @Column(nullable = false, precision = 12, scale = 2)
+    private BigDecimal amount;
 
-    @ManyToOne
-    @JoinColumn(name = "item_id")
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "item_id", nullable = false)
     private Item item;
 
-    @OneToMany(mappedBy = "itemAmount", cascade = CascadeType.ALL)
+    @OneToMany(mappedBy = "itemAmount")
     private Set<OrderItem> orderItems;
 
 }

@@ -6,7 +6,8 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 import lombok.experimental.Accessors;
 
-import javax.validation.constraints.NotEmpty;
+import javax.validation.constraints.NotBlank;
+import com.market.payload.validation.BcryptPassword;
 
 @Getter
 @Setter
@@ -14,10 +15,10 @@ import javax.validation.constraints.NotEmpty;
 @NoArgsConstructor
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class ChangePasswordRequest {
-    @NotEmpty
-    private Long userId;
-    @NotEmpty
+    @NotBlank
     private String oldPassword;
-    @NotEmpty
+
+    @NotBlank
+    @BcryptPassword
     private String newPassword;
 }

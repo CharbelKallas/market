@@ -25,14 +25,24 @@ public class UserDetailsImpl implements UserDetails {
     @JsonIgnore
     private final String password;
 
+    /**
+     * Users can only sign in after verifying their OTP. This is checked after the password (see UserServiceImpl.signin),
+     * not through isEnabled(), which Spring checks before the password and would reveal that the account exists.
+     */
+    private final boolean verified;
+
+    private final int tokenVersion;
+
     private final Collection<? extends GrantedAuthority> authorities;
 
-    public UserDetailsImpl(Long id, String username, String email, String password,
-                           Collection<? extends GrantedAuthority> authorities) {
+    public UserDetailsImpl(Long id, String username, String email, String password, boolean verified,
+                           int tokenVersion, Collection<? extends GrantedAuthority> authorities) {
         this.id = id;
         this.username = username;
         this.email = email;
         this.password = password;
+        this.verified = verified;
+        this.tokenVersion = tokenVersion;
         this.authorities = authorities;
     }
 
@@ -46,22 +56,9 @@ public class UserDetailsImpl implements UserDetails {
                 user.getUsername(),
                 user.getEmail(),
                 user.getPassword(),
+                user.getVerifiedDate() != null,
+                user.getTokenVersion(),
                 authorities);
-    }
-
-    @Override
-    public Collection<? extends GrantedAuthority> getAuthorities() {
-        return authorities;
-    }
-
-    @Override
-    public String getPassword() {
-        return password;
-    }
-
-    @Override
-    public String getUsername() {
-        return username;
     }
 
     @Override

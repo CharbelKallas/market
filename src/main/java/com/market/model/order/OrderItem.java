@@ -7,6 +7,7 @@ import lombok.Setter;
 import lombok.experimental.Accessors;
 
 import javax.persistence.*;
+import java.math.BigDecimal;
 
 @Getter
 @Setter
@@ -21,15 +22,20 @@ public class OrderItem {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "item_qty")
+    @Column(name = "item_qty", nullable = false)
     private Integer itemQty;
 
-    @ManyToOne
-    @JoinColumn(name = "item_amount_id")
+    /** The exact price the item had when ordered. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "item_amount_id", nullable = false)
     private ItemAmount itemAmount;
 
-    @ManyToOne
-    @JoinColumn(name = "order_id")
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "order_id", nullable = false)
     private Order order;
+
+    public BigDecimal getLineTotal() {
+        return itemAmount.getAmount().multiply(BigDecimal.valueOf(itemQty));
+    }
 
 }

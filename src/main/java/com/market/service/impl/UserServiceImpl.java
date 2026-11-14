@@ -5,28 +5,30 @@ import com.market.model.user.Role;
 import com.market.model.user.User;
 import com.market.model.user.UserOtp;
 import com.market.model.user.UserRole;
+import com.market.payload.request.UserSignupRequest;
 import com.market.payload.response.JwtResponse;
 import com.market.payload.response.UserResponse;
-import com.market.repository.UserOtpRepository;
 import com.market.repository.UserRepository;
 import com.market.security.jwt.JwtUtils;
 import com.market.security.services.UserDetailsImpl;
-import com.market.service.MessageService;
+import com.market.service.LoginAttemptService;
+import com.market.service.OtpService;
+import com.market.service.SignupRateLimiter;
 import com.market.service.UserService;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.authentication.DisabledException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
-import java.util.Collections;
-import java.util.Date;
 import java.util.HashSet;
 import java.util.Optional;
+import java.util.Set;
 
+/** Accounts: sign-up, sign-in and password changes. Codes are handled by {@link OtpService}. */
 @Service
 public class UserServiceImpl implements UserService {
 
@@ -38,125 +40,114 @@ public class UserServiceImpl implements UserService {
 
     private final UserRepository userRepository;
 
-    private final UserOtpRepository otpRepository;
+    private final OtpService otpService;
 
-    private final MessageService messageService;
+    private final LoginAttemptService loginAttempts;
 
-    @Value("${app.otpExpirationMs}")
-    private int otpExpirationMs;
-    @Value("${otp.size}")
-    private double otpSize;
+    private final SignupRateLimiter signupLimiter;
 
-    @Autowired
-    public UserServiceImpl(AuthenticationManager authenticationManager, JwtUtils jwtUtils, PasswordEncoder passwordEncoder, UserRepository userRepository, UserOtpRepository otpRepository, MessageService messageService) {
+    public UserServiceImpl(AuthenticationManager authenticationManager, JwtUtils jwtUtils, PasswordEncoder passwordEncoder,
+                           UserRepository userRepository, OtpService otpService, LoginAttemptService loginAttempts,
+                           SignupRateLimiter signupLimiter) {
         this.authenticationManager = authenticationManager;
         this.jwtUtils = jwtUtils;
         this.passwordEncoder = passwordEncoder;
         this.userRepository = userRepository;
-        this.otpRepository = otpRepository;
-        this.messageService = messageService;
+        this.otpService = otpService;
+        this.loginAttempts = loginAttempts;
+        this.signupLimiter = signupLimiter;
     }
 
     @Override
-    public UserResponse signup(UserResponse userResponse) {
+    @Transactional
+    public UserResponse signup(UserSignupRequest request, String clientIp) {
+        String username = User.normalizeIdentifier(request.getUsername());
+        String email = User.normalizeIdentifier(request.getEmail());
 
-        if (userRepository.existsByUsername(userResponse.getUsername()))
-            throw MarketException.throwException("User - " + userResponse.getUsername() + " already exists.");
+        signupLimiter.begin(clientIp);
+        boolean conflict = false;
+        try {
+            String taken = null;
+            if (!isFreeOrAbandoned(userRepository.findOneByUsername(username)))
+                taken = "Username " + username + " is already taken.";
+            else if (!isFreeOrAbandoned(userRepository.findOneByEmail(email)))
+                taken = "Email " + email + " is already registered.";
+            if (taken != null) {
+                conflict = true;
+                throw MarketException.duplicate(taken);
+            }
+            return createUser(request, username, email);
+        } finally {
+            signupLimiter.finish(clientIp, conflict);
+        }
+    }
 
-        if (userRepository.existsByEmail(userResponse.getEmail()))
-            throw MarketException.throwException("User - " + userResponse.getEmail() + " already exists.");
-
+    private UserResponse createUser(UserSignupRequest request, String username, String email) {
         User user = new User()
-                .setUsername(userResponse.getUsername())
-                .setEmail(userResponse.getEmail())
-                .setPassword(passwordEncoder.encode(userResponse.getPassword()))
-                .setFirstName(userResponse.getFirstName())
-                .setLastName(userResponse.getLastName())
-                .setMobileNumber(userResponse.getMobileNumber());
+                .setUsername(username)
+                .setEmail(email)
+                .setPassword(passwordEncoder.encode(request.getPassword()))
+                .setFirstName(request.getFirstName())
+                .setLastName(request.getLastName())
+                .setMobileNumber(request.getMobileNumber());
 
-        user.setUserRoles(Collections.singleton(new UserRole().setName(Role.ROLE_USER).setUser(user)));
+        user.setUserRoles(new HashSet<>(Set.of(new UserRole().setName(Role.ROLE_USER).setUser(user))));
 
-        UserOtp userOtp = new UserOtp()
-                .setUser(user)
-                .setExpiryDate(new Date((new Date()).getTime() + otpExpirationMs))
-                .setOtp(generateOTP());
+        UserOtp userOtp = otpService.newOtp(user);
+        user.setUserOtps(new HashSet<>(Set.of(userOtp)));
 
-        user.setUserOtps(new HashSet<>(Collections.singletonList(userOtp)));
+        User saved = userRepository.save(user);
+        otpService.sendAfterCommit(saved, userOtp.getOtp());
 
-        sendOtp(user.getEmail(), user.getMobileNumber(), userOtp.getOtp());
-
-        return toUserResponse(userRepository.save(user));
+        return toUserResponse(saved);
     }
 
     @Override
-    public JwtResponse signin(String username, String password) {
-        Authentication authentication = authenticationManager.authenticate(
-                new UsernamePasswordAuthenticationToken(username, password));
+    public JwtResponse signin(String username, String password, String clientIp) {
+        String normalized = User.normalizeIdentifier(username);
+        loginAttempts.beginAttempt(normalized, clientIp);
 
-        SecurityContextHolder.getContext().setAuthentication(authentication);
-        String jwt = jwtUtils.generateJwtToken(authentication);
+        Authentication authentication;
+        try {
+            authentication = authenticationManager.authenticate(
+                    new UsernamePasswordAuthenticationToken(normalized, password));
+        } catch (BadCredentialsException e) {
+            loginAttempts.recordFailure(normalized, clientIp);
+            throw e;
+        }
+        loginAttempts.recordSuccess(normalized, clientIp);
 
         UserDetailsImpl userDetails = (UserDetailsImpl) authentication.getPrincipal();
+        // Checked only after the password matched, so it doesn't reveal which usernames exist.
+        if (!userDetails.isVerified())
+            throw new DisabledException("Account is not verified yet");
 
-        return new JwtResponse(jwt,
+        return toJwtResponse(userDetails);
+    }
+
+    private JwtResponse toJwtResponse(UserDetailsImpl userDetails) {
+        return new JwtResponse(jwtUtils.generateJwtToken(userDetails),
                 userDetails.getId(),
                 userDetails.getUsername(),
                 userDetails.getEmail());
     }
 
     @Override
-    public Boolean verify(Long userId, String otp) {
-        Optional<UserOtp> userOtp = otpRepository.findOneByUserIdAndOtpAndExpiryDateGreaterThan(userId, otp, new Date());
-
-        if (userOtp.isPresent()) {
-            userRepository.save(userRepository.getById(userId).setVerifiedDate(new Date()));
-            otpRepository.delete(userOtp.get());
-        }
-        return userOtp.isPresent();
-    }
-
-    @Override
-    public void resendOtp(Long request) {
-
-        UserOtp otp = otpRepository.findOneByUserId(request).orElseThrow(() ->
-                MarketException.throwException("OTP for User does not exist."));
-
-        otp.setUser(userRepository.getById(request))
-                .setExpiryDate(new Date((new Date()).getTime() + otpExpirationMs))
-                .setOtp(generateOTP());
-
-        sendOtp(otp.getUser().getEmail(), otp.getUser().getMobileNumber(), otp.getOtp());
-
-        otpRepository.save(otp);
-    }
-
-    private String generateOTP() {
-        int otp = (int) ((Math.random() * 9 * Math.pow(10, otpSize - 1)) + (Math.pow(10, otpSize - 1)));
-        return String.valueOf(otp);
-    }
-
-    @Override
-    public UserResponse updateProfile(UserResponse userResponse) {
-        User user = userRepository.findOneByUsername(userResponse.getUsername()).orElseThrow(() -> MarketException.throwException("User - " + userResponse.getUsername() + " does not exist."));
-        user.setFirstName(userResponse.getFirstName())
-                .setLastName(userResponse.getLastName())
-                .setMobileNumber(userResponse.getMobileNumber());
-        return toUserResponse(userRepository.save(user));
-    }
-
-    @Override
-    public void changePassword(Long userId, String oldPassword, String newPassword) {
+    @Transactional
+    public JwtResponse changePassword(Long userId, String oldPassword, String newPassword) {
         User user = userRepository.findById(userId)
-                .orElseThrow(() -> MarketException.throwException("User - " + userId + " does not exist."));
+                .orElseThrow(() -> MarketException.notFound("User - " + userId + " does not exist."));
 
         if (!passwordEncoder.matches(oldPassword, user.getPassword()))
-            throw MarketException.throwException("The Old Password is not valid");
+            throw MarketException.badRequest("The old password is not valid.");
 
-        user.setPassword(passwordEncoder.encode(newPassword));
-        toUserResponse(userRepository.save(user));
+        user.setPassword(passwordEncoder.encode(newPassword))
+                .setTokenVersion(user.getTokenVersion() + 1);
+        // Every older token (including the caller's) is now invalid, so hand back a fresh one.
+        return toJwtResponse(UserDetailsImpl.build(user));
     }
 
-    public UserResponse toUserResponse(User user) {
+    private UserResponse toUserResponse(User user) {
         return new UserResponse()
                 .setId(user.getId())
                 .setEmail(user.getEmail())
@@ -166,9 +157,21 @@ public class UserServiceImpl implements UserService {
                 .setMobileNumber(user.getMobileNumber());
     }
 
-    private void sendOtp(String email, String mobileNumber, String otp) {
-        messageService.sendEmailMessage(email, "OTP verification", "Your OTP is : " + otp);
-        messageService.sendSmsMessage(mobileNumber, "Your OTP is : " + otp);
+    /**
+     * True if nobody holds the username/email, or only an abandoned account does: an unverified account whose OTP has
+     * expired. That account is deleted so the username or email can be used again; otherwise anyone could block an
+     * email forever by signing up with it and never verifying.
+     */
+    private boolean isFreeOrAbandoned(Optional<User> holder) {
+        if (holder.isEmpty())
+            return true;
+        User existing = holder.get();
+        if (existing.getVerifiedDate() != null || otpService.hasPendingOtp(existing))
+            return false;
+
+        userRepository.delete(existing);
+        userRepository.flush();
+        return true;
     }
 
 }

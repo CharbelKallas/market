@@ -13,12 +13,19 @@ import com.market.repository.ItemRepository;
 import com.market.repository.OrderRepository;
 import com.market.repository.UserRepository;
 import com.market.service.OrderService;
-import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
-import java.util.*;
-import java.util.stream.Stream;
+import java.math.BigDecimal;
+import java.util.Comparator;
+import java.util.Date;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.TreeSet;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Service
 public class OrderServiceImpl implements OrderService {
@@ -29,64 +36,72 @@ public class OrderServiceImpl implements OrderService {
 
     private final OrderRepository orderRepository;
 
-    @Autowired
-    public OrderServiceImpl(UserRepository userRepository, ItemRepository itemRepository, OrderRepository orderRepository) {
+    private final BigDecimal deliveryCharge;
+
+    public OrderServiceImpl(UserRepository userRepository, ItemRepository itemRepository, OrderRepository orderRepository,
+                            @Value("${app.order.deliveryCharge}") BigDecimal deliveryCharge) {
         this.userRepository = userRepository;
         this.itemRepository = itemRepository;
         this.orderRepository = orderRepository;
+        this.deliveryCharge = deliveryCharge;
     }
 
     @Override
-    public OrderResponse placeOrder(OrderRequest orderRequest) {
-        User user = userRepository.findById(orderRequest.getUserId())
-                .orElseThrow(() -> MarketException.throwException("User - " + orderRequest.getUserId() + " does not exist."));
-
-        List<OrderItem> orderItems = new ArrayList<>();
+    @Transactional
+    public OrderResponse placeOrder(Long userId, OrderRequest orderRequest) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> MarketException.notFound("User - " + userId + " does not exist."));
 
         Order order = new Order()
                 .setUser(user)
                 .setOrderDate(new Date())
-                .setLocationLatitide(orderRequest.getLocationLatitide())
+                .setLocationLatitude(orderRequest.getLocationLatitude())
                 .setLocationLongitude(orderRequest.getLocationLongitude())
-                .setDeliveryCharge(2d);
+                .setDeliveryCharge(deliveryCharge);
+
+        Map<Long, Item> items = itemRepository.findAllById(orderRequest.getItems().keySet()).stream()
+                .collect(Collectors.toMap(Item::getId, Function.identity()));
+        Set<Long> missing = new TreeSet<>(orderRequest.getItems().keySet());
+        missing.removeAll(items.keySet());
+        if (!missing.isEmpty())
+            throw MarketException.notFound("Items not found: " + missing);
 
         orderRequest.getItems().forEach((itemId, qty) -> {
-            Item item = itemRepository.findById(itemId)
-                    .orElseThrow(() -> MarketException.throwException("item " + itemId + " does not found."));
+            Item item = items.get(itemId);
 
-            Stream<ItemAmount> amountStream = item.getItemAmounts().stream().filter(itemAmount -> itemAmount.getActiveDate().isBefore(LocalDateTime.now()));
-            ItemAmount itemAmount = null;
-            for (Object o : amountStream.toArray())
-                if (itemAmount == null)
-                    itemAmount = (ItemAmount) o;
-                else if (((ItemAmount) o).getActiveDate().isAfter(itemAmount.getActiveDate()))
-                    itemAmount = (ItemAmount) o; // TODO: 8/26/22
+            ItemAmount itemAmount = item.getCurrentAmount()
+                    .orElseThrow(() -> MarketException.badRequest("Item " + item.getItemName() + " has no price yet."));
 
-            if (itemAmount == null)
-                throw MarketException.throwException("Amount does not found for Item " + item.getItemName() + ".");
-
-            orderItems.add(new OrderItem().setItemAmount(itemAmount).setItemQty(qty).setOrder(order));
+            order.getOrderItems().add(new OrderItem().setItemAmount(itemAmount).setItemQty(qty).setOrder(order));
         });
-
-        order.setOrderItems(new HashSet<>(orderItems));
 
         return toOrderResponse(orderRepository.save(order));
     }
 
     private OrderResponse toOrderResponse(Order order) {
+        List<OrderItemResponse> orderItems = order.getOrderItems().stream()
+                .map(orderItem -> new OrderItemResponse()
+                        .setItemId(orderItem.getItemAmount().getItem().getId())
+                        .setItemName(orderItem.getItemAmount().getItem().getItemName())
+                        .setItemQty(orderItem.getItemQty())
+                        .setUnitPrice(orderItem.getItemAmount().getAmount())
+                        .setAmount(orderItem.getLineTotal()))
+                .sorted(Comparator.comparing(OrderItemResponse::getItemId))
+                .collect(Collectors.toList());
 
-        Set<OrderItemResponse> orderItems = new HashSet<>();
-        order.getOrderItems().forEach(orderItem -> orderItems.add(new OrderItemResponse()
-                .setItemId(orderItem.getItemAmount().getItem().getId())
-                .setAmount(orderItem.getItemAmount().getAmount() * orderItem.getItemQty())
-                .setItemQty(orderItem.getItemQty())));
+        BigDecimal itemsTotal = order.getOrderItems().stream()
+                .map(OrderItem::getLineTotal)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
 
         return new OrderResponse()
+                .setId(order.getId())
                 .setUserId(order.getUser().getId())
-                .setLocationLatitide(order.getLocationLatitide())
+                .setOrderDate(order.getOrderDate())
+                .setLocationLatitude(order.getLocationLatitude())
                 .setLocationLongitude(order.getLocationLongitude())
-                .setOrderItems(orderItems);
+                .setOrderItems(orderItems)
+                .setDeliveryCharge(order.getDeliveryCharge())
+                .setTotal(itemsTotal.add(order.getDeliveryCharge()));
     }
-
 
 }

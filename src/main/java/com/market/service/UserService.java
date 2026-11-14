@@ -1,18 +1,14 @@
 package com.market.service;
 
+import com.market.payload.request.UserSignupRequest;
 import com.market.payload.response.JwtResponse;
 import com.market.payload.response.UserResponse;
 
 public interface UserService {
-    UserResponse signup(UserResponse userResponse);
+    UserResponse signup(UserSignupRequest request, String clientIp);
 
-    JwtResponse signin(String username, String password);
+    JwtResponse signin(String username, String password, String clientIp);
 
-    Boolean verify(Long userId, String otp);
-
-    void resendOtp(Long request);
-
-    UserResponse updateProfile(UserResponse userResponse);
-
-    void changePassword(Long userId, String oldPassword, String newPassword);
+    /** Returns a new token: all earlier tokens, including the caller's, stop working. */
+    JwtResponse changePassword(Long userId, String oldPassword, String newPassword);
 }
