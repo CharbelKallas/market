@@ -8,17 +8,22 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Date;
 import java.util.Optional;
 
 public interface UserOtpRepository extends JpaRepository<UserOtp, Long> {
     Optional<UserOtp> findOneByUserId(Long id);
 
     /**
-     * Gives back a resend whose message could not be sent, so it counts neither toward the cooldown nor the cap.
-     * Called after the resend's transaction committed, so it needs a transaction of its own.
+     * Puts a code back exactly as it was before a resend that reached nobody, so the failed resend changes nothing:
+     * not the code, the guess counter, the cooldown or the daily count. Called after the resend's transaction
+     * committed, so it needs a transaction of its own.
      */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     @Modifying
-    @Query("update UserOtp o set o.resendCount = o.resendCount - 1, o.sentDate = null where o.id = :id")
-    int undoResend(@Param("id") Long id);
+    @Query("update UserOtp o set o.otp = :code, o.expiryDate = :expiryDate, o.sentDate = :sentDate, "
+            + "o.failedAttempts = :failedAttempts, o.resendCount = :resendCount where o.id = :id")
+    int restore(@Param("id") Long id, @Param("code") String code, @Param("expiryDate") Date expiryDate,
+                @Param("sentDate") Date sentDate, @Param("failedAttempts") int failedAttempts,
+                @Param("resendCount") int resendCount);
 }

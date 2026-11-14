@@ -8,17 +8,12 @@ import com.market.model.user.UserRole;
 import com.market.payload.request.UserSignupRequest;
 import com.market.payload.response.JwtResponse;
 import com.market.payload.response.UserResponse;
-import com.market.repository.UserOtpRepository;
 import com.market.repository.UserRepository;
 import com.market.security.jwt.JwtUtils;
 import com.market.security.services.UserDetailsImpl;
-import com.market.service.MessageService;
+import com.market.service.LoginAttemptService;
+import com.market.service.OtpService;
 import com.market.service.UserService;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
-import com.market.payload.Response;
-import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.DisabledException;
@@ -27,35 +22,14 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.SecureRandom;
-import java.util.Date;
 import java.util.HashSet;
 import java.util.Optional;
 import java.util.Set;
 
+/** Accounts: sign-up, sign-in and password changes. Codes are handled by {@link OtpService}. */
 @Service
 public class UserServiceImpl implements UserService {
-
-    private static final Logger log = LoggerFactory.getLogger(UserServiceImpl.class);
-
-    private static final SecureRandom RANDOM = new SecureRandom();
-
-    static final int MAX_OTP_ATTEMPTS = 5;
-
-    static final long OTP_RESEND_COOLDOWN_MS = 60_000;
-
-    static final int MAX_RESENDS_PER_DAY = 5;
-
-    static final int MAX_SIGNIN_ATTEMPTS = 5;
-
-    static final long SIGNIN_LOCK_MS = 15 * 60 * 1000L;
-
-    private static final long DAY_MS = 24 * 60 * 60 * 1000L;
 
     private final AuthenticationManager authenticationManager;
 
@@ -65,26 +39,18 @@ public class UserServiceImpl implements UserService {
 
     private final UserRepository userRepository;
 
-    private final UserOtpRepository otpRepository;
+    private final OtpService otpService;
 
-    private final MessageService messageService;
-
-    private final long otpExpirationMs;
-
-    private final int otpSize;
+    private final LoginAttemptService loginAttempts;
 
     public UserServiceImpl(AuthenticationManager authenticationManager, JwtUtils jwtUtils, PasswordEncoder passwordEncoder,
-                           UserRepository userRepository, UserOtpRepository otpRepository, MessageService messageService,
-                           @Value("${app.otpExpirationMs}") long otpExpirationMs,
-                           @Value("${otp.size}") int otpSize) {
+                           UserRepository userRepository, OtpService otpService, LoginAttemptService loginAttempts) {
         this.authenticationManager = authenticationManager;
         this.jwtUtils = jwtUtils;
         this.passwordEncoder = passwordEncoder;
         this.userRepository = userRepository;
-        this.otpRepository = otpRepository;
-        this.messageService = messageService;
-        this.otpExpirationMs = otpExpirationMs;
-        this.otpSize = otpSize;
+        this.otpService = otpService;
+        this.loginAttempts = loginAttempts;
     }
 
     @Override
@@ -111,41 +77,31 @@ public class UserServiceImpl implements UserService {
 
         user.setUserRoles(new HashSet<>(Set.of(new UserRole().setName(Role.ROLE_USER).setUser(user))));
 
-        UserOtp userOtp = newOtp(user);
+        UserOtp userOtp = otpService.newOtp(user);
         user.setUserOtps(new HashSet<>(Set.of(userOtp)));
 
         User saved = userRepository.save(user);
-        // The account exists either way; if the code can't be sent the user can ask for a new one.
-        sendOtpAfterCommit(saved, userOtp.getOtp(), null);
+        otpService.sendAfterCommit(saved, userOtp.getOtp());
 
         return toUserResponse(saved);
     }
 
     @Override
-    public JwtResponse signin(String username, String password) {
+    public JwtResponse signin(String username, String password, String clientIp) {
         String normalized = User.normalizeIdentifier(username);
-        Optional<User> user = userRepository.findOneByUsername(normalized);
-        if (user.isPresent() && user.get().getLockedUntil() != null && user.get().getLockedUntil().after(new Date()))
-            throw new MarketException("Too many failed sign-ins. Please try again later.",
-                    HttpStatus.TOO_MANY_REQUESTS, Response.Status.UNAUTHORIZED);
+        loginAttempts.checkNotBlocked(normalized, clientIp);
 
         Authentication authentication;
         try {
             authentication = authenticationManager.authenticate(
                     new UsernamePasswordAuthenticationToken(normalized, password));
         } catch (BadCredentialsException e) {
-            if (user.isPresent()) {
-                userRepository.incrementFailedSignins(normalized);
-                userRepository.lockIfTooManyFailedSignins(normalized, MAX_SIGNIN_ATTEMPTS,
-                        new Date(System.currentTimeMillis() + SIGNIN_LOCK_MS));
-            }
+            loginAttempts.recordFailure(normalized, clientIp);
             throw e;
         }
+        loginAttempts.recordSuccess(normalized, clientIp);
 
         UserDetailsImpl userDetails = (UserDetailsImpl) authentication.getPrincipal();
-        if (user.isPresent() && (user.get().getFailedSigninAttempts() > 0 || user.get().getLockedUntil() != null))
-            userRepository.resetFailedSignins(userDetails.getId());
-
         // Checked only after the password matched, so it doesn't reveal which usernames exist.
         if (!userDetails.isVerified())
             throw new DisabledException("Account is not verified yet");
@@ -161,65 +117,13 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
-    @Transactional
     public boolean verify(Long userId, String otp) {
-        Optional<UserOtp> found = otpRepository.findOneByUserId(userId);
-        if (found.isEmpty())
-            return false;
-
-        UserOtp userOtp = found.get();
-        User user = userOtp.getUser();
-        // A locked-out OTP is kept (not deleted) so its sent date still enforces the resend cooldown.
-        if (userOtp.getExpiryDate().before(new Date()) || userOtp.getFailedAttempts() >= MAX_OTP_ATTEMPTS)
-            return false;
-
-        if (!MessageDigest.isEqual(userOtp.getOtp().getBytes(StandardCharsets.UTF_8), otp.getBytes(StandardCharsets.UTF_8))) {
-            // Returning (not throwing) keeps the transaction, so the failed attempt is saved.
-            userOtp.setFailedAttempts(userOtp.getFailedAttempts() + 1);
-            return false;
-        }
-
-        user.setVerifiedDate(new Date());
-        user.getUserOtps().remove(userOtp);
-        otpRepository.delete(userOtp);
-        return true;
+        return otpService.verify(userId, otp);
     }
 
     @Override
-    @Transactional
     public void resendOtp(Long userId) {
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> MarketException.notFound("User - " + userId + " does not exist."));
-
-        if (user.getVerifiedDate() != null)
-            throw MarketException.badRequest("User is already verified.");
-
-        UserOtp otp = otpRepository.findOneByUserId(userId).orElse(null);
-        if (otp != null && otp.getSentDate() != null
-                && System.currentTimeMillis() - otp.getSentDate().getTime() < OTP_RESEND_COOLDOWN_MS)
-            throw MarketException.badRequest("Please wait a minute before requesting a new OTP.");
-
-        if (otp == null)
-            otp = newOtp(user);
-        Date now = new Date();
-        if (otp.getResendWindowStart() == null || now.getTime() - otp.getResendWindowStart().getTime() >= DAY_MS)
-            otp.setResendWindowStart(now).setResendCount(0);
-        // Each resend resets the guess limit, so resends themselves must be limited.
-        if (otp.getResendCount() >= MAX_RESENDS_PER_DAY)
-            throw MarketException.badRequest("Too many OTP requests. Please try again tomorrow.");
-
-        otp.setExpiryDate(new Date(now.getTime() + otpExpirationMs))
-                .setSentDate(now)
-                .setFailedAttempts(0)
-                .setResendCount(otp.getResendCount() + 1)
-                .setOtp(generateOtp());
-        UserOtp saved = otpRepository.save(otp);
-
-        sendOtpAfterCommit(user, saved.getOtp(), () -> {
-            otpRepository.undoResend(saved.getId());
-            throw new MarketException("Could not send the OTP. Please try again later.",
-                    HttpStatus.SERVICE_UNAVAILABLE, Response.Status.EXCEPTION);
-        });
+        otpService.resend(userId);
     }
 
     @Override
@@ -237,20 +141,6 @@ public class UserServiceImpl implements UserService {
         return toJwtResponse(UserDetailsImpl.build(user));
     }
 
-    private UserOtp newOtp(User user) {
-        Date now = new Date();
-        return new UserOtp()
-                .setUser(user)
-                .setSentDate(now)
-                .setExpiryDate(new Date(now.getTime() + otpExpirationMs))
-                .setOtp(generateOtp());
-    }
-
-    private String generateOtp() {
-        int lowerBound = (int) Math.pow(10, otpSize - 1);
-        return String.valueOf(lowerBound + RANDOM.nextInt(9 * lowerBound));
-    }
-
     private UserResponse toUserResponse(User user) {
         return new UserResponse()
                 .setId(user.getId())
@@ -266,45 +156,11 @@ public class UserServiceImpl implements UserService {
      * Otherwise anyone could block an email forever by signing up with it and never verifying.
      */
     private void releaseIfAbandoned(User existing, String conflictMessage) {
-        Date now = new Date();
-        boolean pendingOtp = existing.getUserOtps() != null && existing.getUserOtps().stream()
-                .anyMatch(otp -> otp.getExpiryDate().after(now));
-        if (existing.getVerifiedDate() != null || pendingOtp)
+        if (existing.getVerifiedDate() != null || otpService.hasPendingOtp(existing))
             throw MarketException.duplicate(conflictMessage);
 
         userRepository.delete(existing);
         userRepository.flush();
-    }
-
-    /**
-     * Sends the OTP only once the transaction has committed, so no DB connection is held during the SMTP/SMS call
-     * and nobody receives a code for an account that was rolled back. A send failure is logged, then onFailure (if
-     * given) runs; it may undo state and throw, which reaches the client.
-     */
-    private void sendOtpAfterCommit(User user, String otp, Runnable onFailure) {
-        String email = user.getEmail();
-        String mobileNumber = user.getMobileNumber();
-        Long userId = user.getId();
-        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-            @Override
-            public void afterCommit() {
-                boolean failed = false;
-                try {
-                    messageService.sendEmailMessage(email, "OTP verification", "Your OTP is : " + otp);
-                } catch (RuntimeException e) {
-                    failed = true;
-                    log.error("Could not send the OTP email to user {}", userId, e);
-                }
-                try {
-                    messageService.sendSmsMessage(mobileNumber, "Your OTP is : " + otp);
-                } catch (RuntimeException e) {
-                    failed = true;
-                    log.error("Could not send the OTP SMS to user {}", userId, e);
-                }
-                if (failed && onFailure != null)
-                    onFailure.run();
-            }
-        });
     }
 
 }

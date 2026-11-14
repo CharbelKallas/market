@@ -48,13 +48,6 @@ public class User {
     @Column(name = "token_version", nullable = false)
     private int tokenVersion;
 
-    /** Consecutive wrong passwords; reaching the limit sets lockedUntil. */
-    @Column(name = "failed_signin_attempts", nullable = false)
-    private int failedSigninAttempts;
-
-    @Column(name = "locked_until")
-    private Date lockedUntil;
-
     /**
      * Only for the bootstrapped admin: a hash of the ADMIN_PASSWORD value last applied, so a restart re-applies the
      * environment password only when it changed, not when the admin changed their password through the API.

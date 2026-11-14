@@ -6,6 +6,7 @@ import com.market.config.AdminInitializer;
 import com.market.exception.CustomExceptionHandler;
 import com.market.repository.UserOtpRepository;
 import com.market.repository.UserRepository;
+import com.market.service.LoginAttemptService;
 import com.market.service.MessageService;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -30,10 +31,12 @@ import java.util.Date;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -250,7 +253,8 @@ class MarketApplicationTests {
 
         mvc.perform(post("/api/user/signin").contentType(MediaType.APPLICATION_JSON)
                         .content(json(Map.of("username", "liam", "password", "password123"))))
-                .andExpect(status().isTooManyRequests());
+                .andExpect(status().isTooManyRequests())
+                .andExpect(jsonPath("$.status").value("TOO_MANY_REQUESTS"));
     }
 
     @Test
@@ -278,9 +282,61 @@ class MarketApplicationTests {
                         .content(json(Map.of("userId", userId))))
                 .andExpect(status().isServiceUnavailable());
 
-        otp = otpRepository.findOneByUserId(userId).orElseThrow();
-        assertThat(otp.getResendCount()).isZero();
-        assertThat(otp.getSentDate()).isNull();
+        // Nothing reached the user, so the resend changed nothing: same code, cooldown, counters.
+        var after = otpRepository.findOneByUserId(userId).orElseThrow();
+        assertThat(after.getResendCount()).isZero();
+        assertThat(after.getOtp()).isEqualTo(otp.getOtp());
+        assertThat(after.getSentDate().getTime()).isEqualTo(otp.getSentDate().getTime());
+        assertThat(after.getFailedAttempts()).isEqualTo(otp.getFailedAttempts());
+    }
+
+    @Test
+    void failedResendKeepsTheGuessCounter() throws Exception {
+        long userId = signup("nora", "nora@example.com");
+        for (int i = 0; i < 5; i++)
+            mvc.perform(post("/api/user/verify").contentType(MediaType.APPLICATION_JSON)
+                            .content(json(Map.of("userId", userId, "otp", "wrong"))))
+                    .andExpect(status().isBadRequest());
+        var otp = otpRepository.findOneByUserId(userId).orElseThrow();
+        otpRepository.save(otp.setSentDate(new Date(System.currentTimeMillis() - 120_000)));
+
+        doThrow(new RuntimeException("SMS down")).when(messageService).sendSmsMessage(anyString(), anyString());
+        mvc.perform(post("/api/user/resend_otp").contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of("userId", userId))))
+                .andExpect(status().isServiceUnavailable());
+
+        // A resend that reached nobody must not hand out 5 fresh guesses.
+        assertThat(otpRepository.findOneByUserId(userId).orElseThrow().getFailedAttempts()).isEqualTo(5);
+    }
+
+    @Test
+    void resendCountsWhenTheEmailArrivedEvenIfSmsFailed() throws Exception {
+        long userId = signup("omar", "omar@example.com");
+        var otp = otpRepository.findOneByUserId(userId).orElseThrow();
+        otpRepository.save(otp.setSentDate(new Date(System.currentTimeMillis() - 120_000)));
+
+        when(messageService.sendEmailMessage(anyString(), anyString(), anyString())).thenReturn(true);
+        doThrow(new RuntimeException("SMS down")).when(messageService).sendSmsMessage(anyString(), anyString());
+        mvc.perform(post("/api/user/resend_otp").contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of("userId", userId))))
+                .andExpect(status().isOk());
+
+        // The cooldown applies, so the inbox can't be flooded.
+        assertThat(otpRepository.findOneByUserId(userId).orElseThrow().getResendCount()).isEqualTo(1);
+        mvc.perform(post("/api/user/resend_otp").contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of("userId", userId))))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void signinThrottlingIsPerClientIp() {
+        LoginAttemptService attempts = new LoginAttemptService();
+        for (int i = 0; i < 5; i++)
+            attempts.recordFailure("victim", "10.0.0.1");
+        assertThatThrownBy(() -> attempts.checkNotBlocked("victim", "10.0.0.1"))
+                .hasMessageContaining("Too many failed sign-ins");
+        // The real user on another network is unaffected.
+        attempts.checkNotBlocked("victim", "192.168.1.20");
     }
 
     @Test
@@ -292,6 +348,11 @@ class MarketApplicationTests {
         mvc.perform(post("/api/user/signup").contentType(MediaType.APPLICATION_JSON)
                         .content(json(signupBody("john smith", "john@example.com"))))
                 .andExpect(status().isBadRequest());
+        Map<String, Object> badPhone = new java.util.HashMap<>(signupBody("phil", "phil@example.com"));
+        badPhone.put("mobileNumber", "call me");
+        mvc.perform(post("/api/user/signup").contentType(MediaType.APPLICATION_JSON).content(json(badPhone)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors.details.mobileNumber").exists());
 
         long userId = signup("olga", "olga@example.com");
         verifyUser(userId, "olga@example.com");

@@ -36,6 +36,8 @@ public class UserSignupRequest {
     @NotBlank
     private String lastName;
 
+    /** International (E.164) format, e.g. +96170123456, so SMS sending can actually reach it. */
     @NotBlank
+    @Pattern(regexp = "^\\+[1-9]\\d{7,14}$", message = "must be in international format, e.g. +96170123456")
     private String mobileNumber;
 }

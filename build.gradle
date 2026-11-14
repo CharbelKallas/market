@@ -12,6 +12,10 @@ java {
     targetCompatibility = JavaVersion.VERSION_11
 }
 
+// Spring Boot 2.7 pins Flyway 8.5 (PostgreSQL up to 14). 9.22 is the newest that works with Boot 2.7 and supports
+// PostgreSQL up to 15; on 16+ it logs an "upgrade recommended" warning but works. Full support needs Boot 3 / Flyway 10.
+ext['flyway.version'] = '9.22.3'
+
 configurations {
     compileOnly {
         extendsFrom annotationProcessor

@@ -43,7 +43,7 @@ All settings come from environment variables; none of the secrets have real defa
 
 Email is off by default. Set `MAIL_ENABLED=true` with SMTP credentials to send OTPs; otherwise read the OTP from the database (`user_otp` table).
 
-Sign-in locks an account for 15 minutes after 5 wrong passwords in a row.
+Sign-in is blocked for 15 minutes after 5 wrong passwords in a row for the same username from the same IP address, so an attacker can't lock the real user out. This is tracked in memory per instance. Behind a reverse proxy, set `FORWARD_HEADERS_STRATEGY=native` so the real client IP is used.
 
 An OTP stops working after 5 wrong guesses. A new one can be requested at most once a minute and 5 times a day. An unverified account whose OTP has expired is removed when someone signs up again with the same username or email.
 
@@ -65,7 +65,7 @@ Every JSON response has the shape `{ "status": "OK", "payload": ..., "errors": .
 
 | Method | Path | Who | Body |
 | --- | --- | --- | --- |
-| POST | `/api/user/signup` | anyone | `username` (3-50 letters, digits, `.`, `_`, `-`), `email`, `password` (8+ chars), `firstName`, `lastName`, `mobileNumber` |
+| POST | `/api/user/signup` | anyone | `username` (3-50 letters, digits, `.`, `_`, `-`), `email`, `password` (8+ chars), `firstName`, `lastName`, `mobileNumber` (international format, e.g. `+96170123456`) |
 | POST | `/api/user/verify` | anyone | `userId`, `otp` |
 | POST | `/api/user/resend_otp` | anyone | `userId` |
 | POST | `/api/user/signin` | anyone | `username`, `password` → `token` |

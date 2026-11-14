@@ -1,5 +1,6 @@
 package com.market.model.item;
 
+import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -32,6 +33,7 @@ public class Item {
 
     /** Lower-case item name; its unique constraint makes "Apple" and "apple" the same item even under races. */
     @Column(name = "item_key", nullable = false, unique = true)
+    @Setter(AccessLevel.NONE)
     private String itemKey;
 
     public Item setItemName(String itemName) {

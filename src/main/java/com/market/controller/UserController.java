@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import javax.servlet.http.HttpServletRequest;
 import javax.validation.Valid;
 
 @RestController
@@ -32,8 +33,9 @@ public class UserController {
     }
 
     @PostMapping("/signin")
-    public Response<JwtResponse> signin(@RequestBody @Valid LoginRequest request) {
-        return Response.<JwtResponse>ok().setPayload(userService.signin(request.getUsername(), request.getPassword()));
+    public Response<JwtResponse> signin(@RequestBody @Valid LoginRequest request, HttpServletRequest httpRequest) {
+        return Response.<JwtResponse>ok().setPayload(
+                userService.signin(request.getUsername(), request.getPassword(), httpRequest.getRemoteAddr()));
     }
 
     @PostMapping("/verify")

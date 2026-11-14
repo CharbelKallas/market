@@ -30,16 +30,8 @@ public class Response<T> {
         return of(Status.OK);
     }
 
-    public static <T> Response<T> unauthorized() {
-        return of(Status.UNAUTHORIZED);
-    }
-
     public static <T> Response<T> validationException() {
         return of(Status.VALIDATION_EXCEPTION);
-    }
-
-    public static <T> Response<T> accessDenied() {
-        return of(Status.ACCESS_DENIED);
     }
 
     public static <T> Response<T> wrongCredentials() {
@@ -54,7 +46,7 @@ public class Response<T> {
     }
 
     public enum Status {
-        OK, BAD_REQUEST, UNAUTHORIZED, VALIDATION_EXCEPTION, EXCEPTION, WRONG_CREDENTIALS, ACCESS_DENIED, NOT_FOUND, DUPLICATE_ENTITY
+        OK, BAD_REQUEST, UNAUTHORIZED, VALIDATION_EXCEPTION, EXCEPTION, WRONG_CREDENTIALS, ACCESS_DENIED, NOT_FOUND, DUPLICATE_ENTITY, TOO_MANY_REQUESTS
     }
 
 }

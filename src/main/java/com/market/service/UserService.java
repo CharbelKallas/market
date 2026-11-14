@@ -7,7 +7,7 @@ import com.market.payload.response.UserResponse;
 public interface UserService {
     UserResponse signup(UserSignupRequest request);
 
-    JwtResponse signin(String username, String password);
+    JwtResponse signin(String username, String password, String clientIp);
 
     boolean verify(Long userId, String otp);
 

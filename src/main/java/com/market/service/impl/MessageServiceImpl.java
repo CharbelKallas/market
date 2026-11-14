@@ -46,9 +46,9 @@ public class MessageServiceImpl implements MessageService {
     }
 
     @Override
-    public void sendEmailMessage(String to, String subject, String text) {
+    public boolean sendEmailMessage(String to, String subject, String text) {
         if (!mailEnabled)
-            return;
+            return false;
 
         SimpleMailMessage message = new SimpleMailMessage();
         message.setFrom(mailUsername);
@@ -57,18 +57,20 @@ public class MessageServiceImpl implements MessageService {
         message.setText(text);
         try {
             emailSender.send(message);
+            return true;
         } catch (Exception e) {
             throw MarketException.internal("Could not send the email.", e);
         }
     }
 
     @Override
-    public void sendSmsMessage(String to, String body) {
+    public boolean sendSmsMessage(String to, String body) {
         if (!smsEnabled)
-            return;
+            return false;
 
         try {
             Message.creator(new PhoneNumber(to), new PhoneNumber(twilioNumber), body).create();
+            return true;
         } catch (Exception e) {
             throw MarketException.internal("Could not send the SMS.", e);
         }

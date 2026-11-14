@@ -11,8 +11,6 @@ create table "user" (
     mobile_number           varchar(255),
     verified_date           timestamp,
     token_version           integer not null default 0,
-    failed_signin_attempts  integer not null default 0,
-    locked_until            timestamp,
     bootstrap_password_hash varchar(255),
     constraint uk_user_username unique (username),
     constraint uk_user_email unique (email)
