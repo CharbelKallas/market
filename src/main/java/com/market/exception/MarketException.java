@@ -14,6 +14,14 @@ public class MarketException extends RuntimeException {
 
     private final Response.Status status;
 
+    /** For 429/503 responses: how long the client should wait, sent as the Retry-After header. */
+    private Long retryAfterSeconds;
+
+    public MarketException setRetryAfterSeconds(long seconds) {
+        this.retryAfterSeconds = seconds;
+        return this;
+    }
+
     public MarketException(String message, HttpStatus httpStatus, Response.Status status) {
         this(message, httpStatus, status, null);
     }

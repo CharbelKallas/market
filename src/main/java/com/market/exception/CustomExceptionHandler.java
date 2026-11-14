@@ -39,7 +39,10 @@ public class CustomExceptionHandler extends ResponseEntityExceptionHandler {
         if (ex.getHttpStatus().is5xxServerError())
             log.error(ex.getMessage(), ex);
         Response<Object> body = new Response<>().setStatus(ex.getStatus()).addError(ex.getMessage(), null);
-        return new ResponseEntity<>(body, ex.getHttpStatus());
+        HttpHeaders headers = new HttpHeaders();
+        if (ex.getRetryAfterSeconds() != null)
+            headers.set(HttpHeaders.RETRY_AFTER, String.valueOf(ex.getRetryAfterSeconds()));
+        return new ResponseEntity<>(body, headers, ex.getHttpStatus());
     }
 
     /**

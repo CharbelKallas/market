@@ -6,6 +6,7 @@ import com.market.payload.request.*;
 import com.market.payload.response.JwtResponse;
 import com.market.payload.response.UserResponse;
 import com.market.security.services.UserDetailsImpl;
+import com.market.service.OtpService;
 import com.market.service.UserService;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -23,8 +24,11 @@ public class UserController {
 
     private final UserService userService;
 
-    public UserController(UserService userService) {
+    private final OtpService otpService;
+
+    public UserController(UserService userService, OtpService otpService) {
         this.userService = userService;
+        this.otpService = otpService;
     }
 
     @PostMapping("/signup")
@@ -40,14 +44,14 @@ public class UserController {
 
     @PostMapping("/verify")
     public Response<String> verify(@RequestBody @Valid VerifyRequest request) {
-        if (!userService.verify(request.getUserId(), request.getOtp()))
+        if (!otpService.verify(request.getUserId(), request.getOtp()))
             throw MarketException.badRequest("Wrong OTP or OTP expired.");
         return Response.<String>ok().setPayload("Activated");
     }
 
     @PostMapping("/resend_otp")
     public Response<String> resendOtp(@RequestBody @Valid ResendOtpRequest request) {
-        userService.resendOtp(request.getUserId());
+        otpService.resend(request.getUserId());
         return Response.<String>ok().setPayload("Done");
     }
 

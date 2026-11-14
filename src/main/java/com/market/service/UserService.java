@@ -9,10 +9,6 @@ public interface UserService {
 
     JwtResponse signin(String username, String password, String clientIp);
 
-    boolean verify(Long userId, String otp);
-
-    void resendOtp(Long userId);
-
     /** Returns a new token: all earlier tokens, including the caller's, stop working. */
     JwtResponse changePassword(Long userId, String oldPassword, String newPassword);
 }

@@ -7,7 +7,7 @@ import lombok.Setter;
 import lombok.experimental.Accessors;
 
 import javax.validation.constraints.NotBlank;
-import javax.validation.constraints.Size;
+import com.market.payload.validation.BcryptPassword;
 
 @Getter
 @Setter
@@ -19,6 +19,6 @@ public class ChangePasswordRequest {
     private String oldPassword;
 
     @NotBlank
-    @Size(min = 8, max = 100)
+    @BcryptPassword
     private String newPassword;
 }

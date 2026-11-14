@@ -6,10 +6,11 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 import lombok.experimental.Accessors;
 
+import com.market.payload.validation.BcryptPassword;
+
 import javax.validation.constraints.Email;
 import javax.validation.constraints.NotBlank;
 import javax.validation.constraints.Pattern;
-import javax.validation.constraints.Size;
 
 @Getter
 @Setter
@@ -27,7 +28,7 @@ public class UserSignupRequest {
     private String username;
 
     @NotBlank
-    @Size(min = 8, max = 100)
+    @BcryptPassword
     private String password;
 
     @NotBlank

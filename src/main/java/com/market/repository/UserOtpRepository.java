@@ -2,17 +2,27 @@ package com.market.repository;
 
 import com.market.model.user.UserOtp;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
+import javax.persistence.LockModeType;
 import java.util.Date;
 import java.util.Optional;
 
 public interface UserOtpRepository extends JpaRepository<UserOtp, Long> {
     Optional<UserOtp> findOneByUserId(Long id);
+
+    /**
+     * Loads the user's code with a row lock held until the transaction ends, so concurrent verify/resend requests
+     * run one after another and can't all slip past the guess limit, cooldown or daily cap.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select o from UserOtp o where o.user.id = :userId")
+    Optional<UserOtp> findForUpdateByUserId(@Param("userId") Long userId);
 
     /**
      * Puts a code back exactly as it was before a resend that reached nobody, so the failed resend changes nothing:

@@ -83,7 +83,7 @@ public class OtpService {
 
     @Transactional
     public boolean verify(Long userId, String code) {
-        Optional<UserOtp> found = otpRepository.findOneByUserId(userId);
+        Optional<UserOtp> found = otpRepository.findForUpdateByUserId(userId);
         if (found.isEmpty())
             return false;
 
@@ -113,7 +113,7 @@ public class OtpService {
             throw MarketException.badRequest("User is already verified.");
 
         // Users always have a code until they verify (locked-out codes are kept), so there is one to update.
-        UserOtp otp = otpRepository.findOneByUserId(userId)
+        UserOtp otp = otpRepository.findForUpdateByUserId(userId)
                 .orElseThrow(() -> MarketException.notFound("No OTP to resend for user " + userId + "."));
         Date now = new Date();
         if (otp.getSentDate() != null && now.getTime() - otp.getSentDate().getTime() < RESEND_COOLDOWN_MS)

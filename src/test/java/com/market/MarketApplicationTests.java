@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.market.config.AdminInitializer;
 import com.market.exception.CustomExceptionHandler;
+import com.market.exception.MarketException;
 import com.market.repository.UserOtpRepository;
 import com.market.repository.UserRepository;
 import com.market.service.LoginAttemptService;
@@ -27,8 +28,14 @@ import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 import java.sql.SQLException;
 
+import java.util.ArrayList;
 import java.util.Date;
+import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -254,6 +261,7 @@ class MarketApplicationTests {
         mvc.perform(post("/api/user/signin").contentType(MediaType.APPLICATION_JSON)
                         .content(json(Map.of("username", "liam", "password", "password123"))))
                 .andExpect(status().isTooManyRequests())
+                .andExpect(header().exists("Retry-After"))
                 .andExpect(jsonPath("$.status").value("TOO_MANY_REQUESTS"));
     }
 
@@ -326,6 +334,58 @@ class MarketApplicationTests {
         mvc.perform(post("/api/user/resend_otp").contentType(MediaType.APPLICATION_JSON)
                         .content(json(Map.of("userId", userId))))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void parallelVerifyGuessesAreAllCounted() throws Exception {
+        long userId = signup("pia", "pia@example.com");
+        int guesses = 5;
+        ExecutorService pool = Executors.newFixedThreadPool(guesses);
+        CountDownLatch start = new CountDownLatch(1);
+        try {
+            List<Future<?>> results = new ArrayList<>();
+            for (int i = 0; i < guesses; i++)
+                results.add(pool.submit(() -> {
+                    start.await();
+                    return mvc.perform(post("/api/user/verify").contentType(MediaType.APPLICATION_JSON)
+                            .content(json(Map.of("userId", userId, "otp", "wrong"))));
+                }));
+            start.countDown();
+            for (Future<?> result : results)
+                result.get();
+        } finally {
+            pool.shutdown();
+        }
+        // Without the row lock, simultaneous guesses overwrite each other's count (lost updates) and more than
+        // 5 guesses get evaluated. With it, every guess is counted.
+        assertThat(otpRepository.findOneByUserId(userId).orElseThrow().getFailedAttempts()).isEqualTo(guesses);
+    }
+
+    @Test
+    void signinThrottlingGroupsIpv6NetworksAndCapsEachClient() {
+        LoginAttemptService attempts = new LoginAttemptService();
+        // Rotating addresses inside one IPv6 /64 doesn't escape the limit.
+        for (int i = 1; i <= 5; i++)
+            attempts.recordFailure("victim", "2001:db8:1:2::" + i);
+        assertThatThrownBy(() -> attempts.checkNotBlocked("victim", "2001:db8:1:2::ffff"))
+                .hasMessageContaining("Too many failed sign-ins");
+        attempts.checkNotBlocked("victim", "2001:db8:1:3::1");
+
+        // Spraying many usernames from one address hits the per-client cap.
+        for (int i = 0; i < 50; i++)
+            attempts.recordFailure("user" + i, "10.0.0.9");
+        assertThatThrownBy(() -> attempts.checkNotBlocked("someone-else", "10.0.0.9"))
+                .isInstanceOf(MarketException.class)
+                .satisfies(e -> assertThat(((MarketException) e).getRetryAfterSeconds()).isPositive());
+    }
+
+    @Test
+    void passwordsMustFitBcryptsLimit() throws Exception {
+        Map<String, Object> tooLong = new java.util.HashMap<>(signupBody("quinn", "quinn@example.com"));
+        tooLong.put("password", "é".repeat(37)); // 37 characters but 74 UTF-8 bytes
+        mvc.perform(post("/api/user/signup").contentType(MediaType.APPLICATION_JSON).content(json(tooLong)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors.details.password").exists());
     }
 
     @Test

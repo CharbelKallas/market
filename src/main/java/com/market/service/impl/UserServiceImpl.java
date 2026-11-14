@@ -117,16 +117,6 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
-    public boolean verify(Long userId, String otp) {
-        return otpService.verify(userId, otp);
-    }
-
-    @Override
-    public void resendOtp(Long userId) {
-        otpService.resend(userId);
-    }
-
-    @Override
     @Transactional
     public JwtResponse changePassword(Long userId, String oldPassword, String newPassword) {
         User user = userRepository.findById(userId)
