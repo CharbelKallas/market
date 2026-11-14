@@ -40,7 +40,7 @@ All settings come from environment variables; none of the secrets have real defa
 | `SMS_ENABLED`, `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_NUMBER` | Sending OTP SMS | disabled |
 | `OTP_EXPIRATION_MS` | OTP lifetime | 10 minutes |
 | `DELIVERY_CHARGE` | Delivery charge added to each order | `2.00` |
-| `SIGNUP_MAX_PER_HOUR` | Sign-ups allowed per client address per hour | `10` |
+| `SIGNUP_MAX_CONFLICTS_PER_HOUR` | Sign-ups per client address per hour that may hit an already registered email or username | `10` |
 | `API_DOCS_ENABLED` | Publish `/v3/api-docs` and Swagger UI | `true` — **set `false` in production** |
 | `TRUSTED_PROXIES` | Regex of proxy addresses whose `X-Forwarded-For` is trusted | loopback only |
 | `DB_CONNECTION_INIT_SQL` | SQL run on each new DB connection | `SET lock_timeout = '3s'` |
@@ -51,7 +51,7 @@ Sign-in is blocked for 15 minutes after 5 wrong passwords in a row for the same 
 
 **Single instance only:** these counters are kept in memory, so they reset on restart and aren't shared between instances. Before running several instances, move them to a shared store (a database table or Redis).
 
-An OTP stops working after 5 wrong guesses. A new one can be requested at most once a minute and 5 times a day; `resend_otp` gives the same answer whether or not a code was sent, so it doesn't reveal which accounts exist. Sign-up does say when an email or username is taken, so it is limited per client address (`SIGNUP_MAX_PER_HOUR`). An unverified account whose OTP has expired is removed when someone signs up again with the same username or email.
+An OTP stops working after 5 wrong guesses. A new one can be requested at most once a minute and 5 times a day; `resend_otp` gives the same answer whether or not a code was sent, so it doesn't reveal which accounts exist. Sign-up does say when an email or username is taken, so each client address may hit a taken one only 10 times an hour (`SIGNUP_MAX_CONFLICTS_PER_HOUR`); ordinary sign-ups aren't limited. An unverified account whose OTP has expired is removed when someone signs up again with the same username or email.
 
 Changing the password signs out every existing session (older tokens stop working).
 

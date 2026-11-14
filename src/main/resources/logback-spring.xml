@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <!-- Spring Boot's default console logging, plus a filter for SQL errors the app expects and handles. -->
+    <include resource="org/springframework/boot/logging/logback/base.xml"/>
+    <turboFilter class="com.market.config.ExpectedSqlErrorLogFilter"/>
+</configuration>

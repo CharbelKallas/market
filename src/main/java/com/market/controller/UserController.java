@@ -37,8 +37,15 @@ public class UserController {
 
     @PostMapping("/signup")
     public Response<UserResponse> signup(@RequestBody @Valid UserSignupRequest request, HttpServletRequest httpRequest) {
-        signupRateLimiter.acquire(httpRequest.getRemoteAddr());
-        return Response.<UserResponse>ok().setPayload(userService.signup(request));
+        String clientIp = httpRequest.getRemoteAddr();
+        signupRateLimiter.checkNotBlocked(clientIp);
+        try {
+            return Response.<UserResponse>ok().setPayload(userService.signup(request));
+        } catch (MarketException e) {
+            if (e.getStatus() == Response.Status.DUPLICATE_ENTITY)
+                signupRateLimiter.recordConflict(clientIp);
+            throw e;
+        }
     }
 
     @PostMapping("/signin")

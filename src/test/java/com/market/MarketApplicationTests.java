@@ -3,6 +3,8 @@ package com.market;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.market.config.AdminInitializer;
+import com.market.config.ExpectedSqlErrorLogFilter;
+import ch.qos.logback.core.spi.FilterReply;
 import com.market.exception.CustomExceptionHandler;
 import com.market.exception.MarketException;
 import com.market.repository.UserOtpRepository;
@@ -561,14 +563,31 @@ class MarketApplicationTests {
     }
 
     @Test
-    void signupIsRateLimitedPerClient() {
+    void signupLimitCountsOnlyTakenEmailsAndUsernames() {
         SignupRateLimiter limiter = new SignupRateLimiter(3);
+        // Ordinary sign-ups from a shared address are never limited.
+        for (int i = 0; i < 50; i++)
+            limiter.checkNotBlocked("10.0.0.5");
         for (int i = 0; i < 3; i++)
-            limiter.acquire("10.0.0.5");
-        assertThatThrownBy(() -> limiter.acquire("10.0.0.5"))
+            limiter.recordConflict("10.0.0.5");
+        assertThatThrownBy(() -> limiter.checkNotBlocked("10.0.0.5"))
                 .isInstanceOf(MarketException.class)
                 .satisfies(e -> assertThat(((MarketException) e).getRetryAfterSeconds()).isPositive());
-        limiter.acquire("10.0.0.6");
+        limiter.checkNotBlocked("10.0.0.6");
+    }
+
+    @Test
+    void onlyExpectedSqlErrorsAreFilteredFromLogs() {
+        ExpectedSqlErrorLogFilter filter = new ExpectedSqlErrorLogFilter();
+        ch.qos.logback.classic.Logger sqlLogger = (ch.qos.logback.classic.Logger)
+                org.slf4j.LoggerFactory.getLogger("org.hibernate.engine.jdbc.spi.SqlExceptionHelper");
+        ch.qos.logback.classic.Level error = ch.qos.logback.classic.Level.ERROR;
+        assertThat(filter.decide(null, sqlLogger, error, "ERROR: canceling statement due to lock timeout", null, null))
+                .isEqualTo(FilterReply.DENY);
+        assertThat(filter.decide(null, sqlLogger, error, "SQL Error: 0, SQLState: 23505", null, null))
+                .isEqualTo(FilterReply.DENY);
+        assertThat(filter.decide(null, sqlLogger, error, "ERROR: column \"x\" does not exist", null, null))
+                .isEqualTo(FilterReply.NEUTRAL);
     }
 
     @Test
